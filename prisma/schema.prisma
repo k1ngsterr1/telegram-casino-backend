@@ -1,0 +1,103 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
+// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../node_modules/.prisma/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum LanguageCode {
+  en
+  ru
+}
+
+enum SystemKey {
+  TELEGRAM_BOT_TOKEN
+}
+
+model User {
+  id           String          @id @default(uuid())
+  telegramId   String          @unique
+  username     String
+  languageCode LanguageCode
+  balance      Int             @default(0)
+  isBanned     Boolean         @default(false)
+  role         Role            @default(USER)
+
+  inventory    InventoryItem[] @relation("UserInventory")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model InventoryItem {
+  id      Int    @id @default(autoincrement())
+  userId  String
+  prizeId Int
+
+  user  User  @relation("UserInventory", fields: [userId], references: [id])
+  prize Prize @relation("InventoryPrizes", fields: [prizeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Prize {
+  id     Int    @id @default(autoincrement())
+  name   String
+  amount Int
+  url    String
+
+  inventory InventoryItem[] @relation("InventoryPrizes")
+  case      CaseItem[]      @relation("GiftItems")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model CaseItem {
+  id      Int     @id @default(autoincrement())
+  name    String
+  chance  Decimal
+  prizeId Int
+  caseId  Int
+
+  prize Prize @relation("GiftItems", fields: [prizeId], references: [id])
+  case  Case  @relation("CaseItems", fields: [caseId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Case {
+  id      Int        @id @default(autoincrement())
+  name    String
+  price   Int
+  preview String
+  items   CaseItem[] @relation("CaseItems")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model System {
+  id    Int       @id @default(autoincrement())
+  key   SystemKey @unique
+  value String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
