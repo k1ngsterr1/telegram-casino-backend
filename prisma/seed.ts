@@ -111,6 +111,37 @@ async function main() {
   console.log('adminuser    (777777777) - Balance: 5000  - EN - ADMIN');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
+  console.log('\nSeeding system settings...');
+
+  // Seed default deposit settings
+  const defaultDepositSettings = {
+    minDeposit: 100,
+    maxWithdrawal: 100000,
+    withdrawalCommission: 5,
+  };
+
+  await prisma.system.upsert({
+    where: { key: SystemKey.DEPOSIT },
+    update: { value: JSON.stringify(defaultDepositSettings) },
+    create: {
+      key: SystemKey.DEPOSIT,
+      value: JSON.stringify(defaultDepositSettings),
+    },
+  });
+
+  console.log('✓ Default deposit settings created');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('💰 DEPOSIT SETTINGS');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`Min Deposit:            ${defaultDepositSettings.minDeposit} ₽`);
+  console.log(
+    `Max Withdrawal:         ${defaultDepositSettings.maxWithdrawal} ₽`,
+  );
+  console.log(
+    `Withdrawal Commission:  ${defaultDepositSettings.withdrawalCommission}%`,
+  );
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
   console.log('Seeding complete!');
   console.log('Remember to set TELEGRAM_BOT_TOKEN via the admin API endpoint.');
 }

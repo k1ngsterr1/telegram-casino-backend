@@ -28,6 +28,7 @@ enum SystemKey {
   TELEGRAM_BOT_TOKEN
   WEBAPP_URL
   AVIATOR
+  DEPOSIT
 }
 
 enum PaymentStatus {

@@ -2,6 +2,7 @@ import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '../shared/services/prisma.service';
 import { BotService } from '../shared/services/bot.service';
 import { UpdateBotTokenDto } from './dto/update-bot-token.dto';
+import { UpdateDepositSettingsDto } from './dto/update-deposit-settings.dto';
 import { SystemKey } from '@prisma/client';
 
 @Injectable()
@@ -25,7 +26,8 @@ export class SystemService {
       return systemVariables.map((variable) => ({
         key: variable.key,
         value:
-          variable.key === SystemKey.AVIATOR
+          variable.key === SystemKey.AVIATOR ||
+          variable.key === SystemKey.DEPOSIT
             ? JSON.parse(variable.value)
             : variable.value,
       }));
@@ -51,7 +53,8 @@ export class SystemService {
       return {
         key: variable.key,
         value:
-          variable.key === SystemKey.AVIATOR
+          variable.key === SystemKey.AVIATOR ||
+          variable.key === SystemKey.DEPOSIT
             ? JSON.parse(variable.value)
             : variable.value,
       };
@@ -115,6 +118,36 @@ export class SystemService {
     } catch (error) {
       this.logger.error('Failed to update WebApp URL', error);
       throw new HttpException('Failed to update WebApp URL', 500);
+    }
+  }
+
+  /**
+   * Update deposit settings (min deposit, max withdrawal, commission)
+   */
+  async updateDepositSettings(dto: UpdateDepositSettingsDto) {
+    try {
+      const depositSettings = {
+        minDeposit: dto.minDeposit,
+        maxWithdrawal: dto.maxWithdrawal,
+        withdrawalCommission: dto.withdrawalCommission,
+      };
+
+      const updated = await this.prisma.system.upsert({
+        where: { key: SystemKey.DEPOSIT },
+        update: { value: JSON.stringify(depositSettings) },
+        create: {
+          key: SystemKey.DEPOSIT,
+          value: JSON.stringify(depositSettings),
+        },
+      });
+
+      return {
+        key: updated.key,
+        value: JSON.parse(updated.value),
+      };
+    } catch (error) {
+      this.logger.error('Failed to update deposit settings', error);
+      throw new HttpException('Failed to update deposit settings', 500);
     }
   }
 }
