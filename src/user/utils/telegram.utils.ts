@@ -45,6 +45,10 @@ export function validateTelegramWebAppData(
 
     if (key === 'hash') {
       hash = value;
+    } else if (key === 'signature') {
+      // Telegram may send a signature field - exclude it from validation
+      // The signature is used for other purposes and should not be part of hash calculation
+      continue;
     } else {
       params.set(key, value);
     }
@@ -70,6 +74,13 @@ export function validateTelegramWebAppData(
     .digest('hex');
 
   if (calculatedHash !== hash) {
+    // Add debugging info in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('Hash validation failed:');
+      console.error('Expected hash:', hash);
+      console.error('Calculated hash:', calculatedHash);
+      console.error('Data check string:', dataCheckString);
+    }
     throw new HttpException('Invalid hash - data integrity check failed', 400);
   }
 
