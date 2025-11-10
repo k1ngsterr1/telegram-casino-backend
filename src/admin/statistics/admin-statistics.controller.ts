@@ -1,10 +1,4 @@
-import {
-  Controller,
-  Get,
-  Logger,
-  Query,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Logger, Query, UseGuards } from '@nestjs/common';
 import { AdminStatisticsService } from './admin-statistics.service';
 import {
   ApiOperation,
@@ -18,6 +12,7 @@ import { StatisticsFilterDto } from './dto/statistics-filter.dto';
 import { AnalyticsResponseDto } from './dto/analytics-response.dto';
 import { TransactionsResponseDto } from './dto/transaction-response.dto';
 import { PaginationDto } from 'src/shared/dto/pagination.dto';
+import { LeaderboardResponseDto } from './dto/leaderboard-response.dto';
 
 @Controller('admin/statistics')
 @ApiTags('Admin - Statistics')
@@ -62,6 +57,22 @@ export class AdminStatisticsController {
       );
     } catch (error) {
       this.logger.error('Failed to get transactions: ', error);
+      throw error;
+    }
+  }
+
+  @Get('leaderboard')
+  @ApiOperation({ summary: 'Get top players by bets and winnings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Leaderboard retrieved successfully',
+    type: LeaderboardResponseDto,
+  })
+  async getLeaderboard(@Query() filter: StatisticsFilterDto) {
+    try {
+      return await this.adminStatisticsService.getLeaderboard(filter);
+    } catch (error) {
+      this.logger.error('Failed to get leaderboard: ', error);
       throw error;
     }
   }
