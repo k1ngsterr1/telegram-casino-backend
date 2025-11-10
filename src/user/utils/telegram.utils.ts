@@ -45,34 +45,17 @@ export function validateTelegramWebAppData(
     decodedInitData = initData;
   }
 
-  // Parse parameters manually to handle all encoding scenarios
-  const params: Map<string, string> = new Map();
-  let hash = '';
-
-  // Split by & to get key-value pairs
-  const pairs = decodedInitData.split('&');
-
-  for (const pair of pairs) {
-    const equalIndex = pair.indexOf('=');
-    if (equalIndex === -1) continue;
-
-    const key = pair.substring(0, equalIndex);
-    const value = pair.substring(equalIndex + 1);
-
-    if (key === 'hash') {
-      hash = value;
-    } else if (key === 'signature') {
-      // Telegram may send a signature field - exclude it from validation
-      continue;
-    } else {
-      // Store the value as-is (URL-encoded) for hash calculation
-      params.set(key, value);
-    }
-  }
+  // Parse the URL search params
+  const urlParams = new URLSearchParams(decodedInitData);
+  const hash = urlParams.get('hash');
 
   if (!hash) {
     throw new HttpException('Hash is missing from initData', 400);
   }
+
+  // Remove hash and signature from params for validation
+  urlParams.delete('hash');
+  urlParams.delete('signature');
 
   // Create the secret key using bot token
   const secretKey = crypto
@@ -81,10 +64,19 @@ export function validateTelegramWebAppData(
     .digest();
 
   // Create data check string: sorted keys with values, joined by newlines
-  const sortedKeys = Array.from(params.keys()).sort();
-  const dataCheckString = sortedKeys
-    .map((key) => `${key}=${params.get(key)}`)
-    .join('\n');
+  // Important: URLSearchParams.toString() returns properly encoded values
+  const dataCheckArray: string[] = [];
+
+  // Sort parameters alphabetically and build data check string
+  const sortedKeys = Array.from(urlParams.keys()).sort();
+  for (const key of sortedKeys) {
+    const value = urlParams.get(key);
+    if (value !== null) {
+      dataCheckArray.push(`${key}=${value}`);
+    }
+  }
+
+  const dataCheckString = dataCheckArray.join('\n');
 
   // Calculate the hash
   const calculatedHash = crypto
@@ -110,15 +102,17 @@ export function validateTelegramWebAppData(
     hash,
   };
 
-  params.forEach((value, key) => {
+  // Re-parse with hash included for data extraction
+  const allParams = new URLSearchParams(decodedInitData);
+
+  allParams.forEach((value, key) => {
     if (key === 'user') {
-      // Decode the URL-encoded JSON string and parse it
-      result.user = JSON.parse(decodeURIComponent(value));
+      // Parse the user JSON
+      result.user = JSON.parse(value);
     } else if (key === 'auth_date') {
       result.auth_date = parseInt(value, 10);
-    } else {
-      // Decode other parameters
-      result[key] = decodeURIComponent(value);
+    } else if (key !== 'hash' && key !== 'signature') {
+      result[key] = value;
     }
   });
 
