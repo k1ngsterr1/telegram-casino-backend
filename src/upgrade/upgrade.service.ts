@@ -173,10 +173,7 @@ export class UpgradeService {
         });
 
         if (!upgradeChance) {
-          throw new HttpException(
-            'Upgrade multiplier not configured',
-            400,
-          );
+          throw new HttpException('Upgrade multiplier not configured', 400);
         }
 
         const chance = Number(upgradeChance.chance);
