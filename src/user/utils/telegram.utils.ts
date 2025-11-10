@@ -29,19 +29,31 @@ export function validateTelegramWebAppData(
   initData: string,
   botToken: string,
 ): ParsedInitData {
-  // Parse the URL-encoded init data from Telegram
-  const urlParams = new URLSearchParams(initData);
+  if (!initData) {
+    throw new HttpException('initData is required', 400);
+  }
+
+  // Parse parameters manually to handle all encoding scenarios
   const params: Map<string, string> = new Map();
   let hash = '';
 
-  // Extract all parameters
-  for (const [key, value] of urlParams.entries()) {
+  // Split by & to get key-value pairs
+  const pairs = initData.split('&');
+
+  for (const pair of pairs) {
+    const equalIndex = pair.indexOf('=');
+    if (equalIndex === -1) continue;
+
+    const key = pair.substring(0, equalIndex);
+    const value = pair.substring(equalIndex + 1);
+
     if (key === 'hash') {
       hash = value;
     } else if (key === 'signature') {
       // Telegram may send a signature field - exclude it from validation
       continue;
     } else {
+      // Store the value as-is (URL-encoded) for hash calculation
       params.set(key, value);
     }
   }
@@ -88,11 +100,13 @@ export function validateTelegramWebAppData(
 
   params.forEach((value, key) => {
     if (key === 'user') {
-      result.user = JSON.parse(value);
+      // Decode the URL-encoded JSON string and parse it
+      result.user = JSON.parse(decodeURIComponent(value));
     } else if (key === 'auth_date') {
       result.auth_date = parseInt(value, 10);
     } else {
-      result[key] = value;
+      // Decode other parameters
+      result[key] = decodeURIComponent(value);
     }
   });
 
