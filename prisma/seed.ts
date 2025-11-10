@@ -142,6 +142,57 @@ async function main() {
   );
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
+  // Seed default aviator settings
+  const defaultAviatorSettings = {
+    minMultiplier: 1.0,
+    maxMultiplier: 100000,
+    minBet: 25,
+    maxBet: 10000,
+    targetRtp: 0.89,
+    instantCrashP: 0.01,
+  };
+
+  await prisma.system.upsert({
+    where: { key: SystemKey.AVIATOR },
+    update: { value: JSON.stringify(defaultAviatorSettings) },
+    create: {
+      key: SystemKey.AVIATOR,
+      value: JSON.stringify(defaultAviatorSettings),
+    },
+  });
+
+  console.log('✓ Default aviator settings created');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('✈️  AVIATOR SETTINGS');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`Min Multiplier:    ${defaultAviatorSettings.minMultiplier}x`);
+  console.log(`Max Multiplier:    ${defaultAviatorSettings.maxMultiplier}x`);
+  console.log(`Min Bet:           ${defaultAviatorSettings.minBet} coins`);
+  console.log(`Max Bet:           ${defaultAviatorSettings.maxBet} coins`);
+  console.log(`Target RTP:        ${defaultAviatorSettings.targetRtp * 100}%`);
+  console.log(`Instant Crash:     ${defaultAviatorSettings.instantCrashP * 100}%`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+  // Generate and seed server seed for provably fair system
+  const crypto = require('crypto');
+  const serverSeed = crypto.randomBytes(32).toString('hex');
+
+  await prisma.system.upsert({
+    where: { key: SystemKey.AVIATOR_SERVER_SEED },
+    update: { value: serverSeed },
+    create: {
+      key: SystemKey.AVIATOR_SERVER_SEED,
+      value: serverSeed,
+    },
+  });
+
+  console.log('✓ Server seed generated for provably fair system');
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🔐 PROVABLY FAIR SERVER SEED');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log(`Server Seed: ${serverSeed}`);
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
   console.log('Seeding complete!');
   console.log('Remember to set TELEGRAM_BOT_TOKEN via the admin API endpoint.');
 }

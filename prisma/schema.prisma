@@ -28,6 +28,7 @@ enum SystemKey {
   TELEGRAM_BOT_TOKEN
   WEBAPP_URL
   AVIATOR
+  AVIATOR_SERVER_SEED
   DEPOSIT
 }
 
@@ -120,6 +121,8 @@ model Aviator {
   startsAt    DateTime
   multiplier  Decimal
   status      AviatorStatus @default(ACTIVE)
+  clientSeed  String?
+  nonce       Int     @default(0)
 
   bets Bet[]
 

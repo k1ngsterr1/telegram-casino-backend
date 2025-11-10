@@ -24,12 +24,71 @@
 
 ## Description
 
-[Nest](https://github.com/nestjs/nest) framework TypeScript starter repository.
+Telegram Casino Backend - A NestJS backend for a Telegram Mini App casino game featuring:
+
+- 🎰 **Casino Games**: Case opening system and Aviator crash game
+- 🔐 **Provably Fair**: HMAC-SHA256 based algorithm for verifiable game outcomes
+- 🤖 **Telegram Integration**: Grammy bot framework with WebApp support
+- 🔑 **JWT Authentication**: Secure user authentication via Telegram initData
+- 💾 **PostgreSQL + Prisma**: Type-safe database access
+- 👨‍💼 **Admin Panel**: Complete admin API for game management
+- 💰 **Payment System**: Telegram Stars integration
+
+## Key Features
+
+### Provably Fair Aviator Game
+The Aviator crash game implements a cryptographically secure provably fair algorithm:
+- HMAC-SHA256 based multiplier generation
+- Server seed + client seed + nonce verification
+- Configurable RTP (Return to Player) and crash probabilities
+- Full transparency for players to verify game outcomes
+
+📖 [Read Provably Fair Documentation](docs/PROVABLY_FAIR.md)
+
+### Architecture
+- **SharedModule**: Global services (Prisma, Bot, JWT, Cron, Referral)
+- **UserModule**: Public endpoints for authentication and profiles
+- **AdminModule**: Protected admin endpoints for game and user management
+- **WebSocket Gateway**: Real-time game updates
+
+📖 [Development Instructions](.github/copilot-instructions.md)
+
+## Quick Start
+
+### Prerequisites
+- Node.js 18+ and Yarn
+- PostgreSQL database
+- Telegram Bot Token (from [@BotFather](https://t.me/BotFather))
 
 ## Project setup
 
 ```bash
+# Install dependencies
 $ yarn install
+
+# Set up environment variables
+$ cp .env.example .env
+# Edit .env with your database URL and JWT secret
+
+# Run database migrations
+$ yarn prisma migrate dev
+
+# Seed database (creates admin user and default settings)
+$ yarn prisma db seed
+
+# Generate Prisma Client
+$ yarn prisma generate
+```
+
+### Environment Variables
+
+Create a `.env` file in the root directory:
+
+```env
+DATABASE_URL=postgresql://user:password@localhost:5432/telegram_casino
+JWT_SECRET=your-secret-key-here
+WEBAPP_URL=https://your-webapp.com
+PORT=3000
 ```
 
 ## Compile and run the project
@@ -57,6 +116,91 @@ $ yarn run test:e2e
 # test coverage
 $ yarn run test:cov
 ```
+
+## Project Structure
+
+```
+src/
+├── admin/          # Admin-only endpoints (users, cases, prizes, aviator)
+├── auth/           # Admin authentication
+├── case/           # Case opening game endpoints
+├── payment/        # Payment processing (Telegram Stars)
+├── shared/         # Global services and utilities
+│   ├── services/   # Prisma, Bot, JWT, Cron, Referral
+│   ├── guards/     # Authentication guards
+│   └── strategies/ # JWT strategy
+├── system/         # System settings management
+├── user/           # User authentication and profiles
+└── websocket/      # Real-time game updates
+
+prisma/
+├── schema.prisma   # Database schema
+├── seed.ts         # Database seeding
+└── migrations/     # Migration history
+
+docs/
+├── PROVABLY_FAIR.md              # Provably fair algorithm docs
+├── PROVABLY_FAIR_IMPLEMENTATION.md  # Implementation guide
+├── PROVABLY_FAIR_QUICKREF.md     # Quick reference
+└── MIGRATION_PROVABLY_FAIR.sql   # Migration notes
+```
+
+## API Endpoints
+
+### Public Endpoints
+- `POST /user/telegram` - Authenticate via Telegram WebApp
+- `GET /user/profile` - Get user profile
+- `GET /case` - List all cases
+- `POST /case/:id/open` - Open a case
+
+### Admin Endpoints (require admin token)
+- `GET /admin/aviator/settings` - Get aviator settings
+- `PUT /admin/aviator/settings` - Update aviator settings
+- `GET /admin/aviator/server-seed` - Get server seed
+- `PUT /admin/aviator/server-seed` - Update server seed
+- `GET /admin/user` - List all users
+- `PUT /admin/user/:id/ban` - Ban/unban user
+- `GET /admin/case` - Manage cases
+- `GET /admin/prize` - Manage prizes
+
+📖 Full API documentation available at `/api` when running the server (Swagger UI)
+
+## Database Management
+
+```bash
+# Create a new migration
+$ yarn prisma migrate dev --name migration_name
+
+# Apply migrations in production
+$ yarn prisma migrate deploy
+
+# Open Prisma Studio (visual database editor)
+$ yarn prisma studio
+
+# Reset database (⚠️ deletes all data)
+$ yarn prisma migrate reset
+```
+
+## Provably Fair System
+
+The Aviator game uses HMAC-SHA256 for provably fair outcomes:
+
+```typescript
+multiplier = HMAC-SHA256(serverSeed, "clientSeed:nonce")
+```
+
+**Admin can configure**:
+- Target RTP (default 89%)
+- Instant crash probability (default 1%)
+- Min/max multipliers
+- Server seed
+
+**Players can verify**:
+- Each game's client seed and nonce are public
+- Server seed can be revealed after games
+- Independent verification using the same algorithm
+
+See [docs/PROVABLY_FAIR.md](docs/PROVABLY_FAIR.md) for details.
 
 ## Deployment
 
