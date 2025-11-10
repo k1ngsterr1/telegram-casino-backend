@@ -8,7 +8,9 @@ import { AdminPrizeModule } from './admin/prize/admin-prize.module';
 import { AdminCaseModule } from './admin/case/admin-case.module';
 import { AdminAviatorModule } from './admin/aviator/admin-aviator.module';
 import { AdminStatisticsModule } from './admin/statistics/admin-statistics.module';
+import { AdminUpgradeModule } from './admin/upgrade/admin-upgrade.module';
 import { CaseModule } from './case/case.module';
+import { UpgradeModule } from './upgrade/upgrade.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { SystemModule } from './system/system.module';
 import { PaymentModule } from './payment/payment.module';
@@ -37,7 +39,9 @@ import { ServeStaticModule } from '@nestjs/serve-static';
     AdminCaseModule,
     AdminAviatorModule,
     AdminStatisticsModule,
+    AdminUpgradeModule,
     CaseModule,
+    UpgradeModule,
     WebsocketModule,
     SystemModule,
     PaymentModule,

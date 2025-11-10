@@ -30,6 +30,7 @@ enum SystemKey {
   AVIATOR
   AVIATOR_SERVER_SEED
   DEPOSIT
+  UPGRADE
 }
 
 enum PaymentStatus {
@@ -55,6 +56,8 @@ model User {
   inventory    InventoryItem[] @relation("UserInventory")
   bets         Bet[]
   payments     Payment[]
+  payouts      Payout[]
+  upgrades     Upgrade[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -82,8 +85,11 @@ model Prize {
   amount Int
   url    String
 
-  inventory InventoryItem[] @relation("InventoryPrizes")
-  case      CaseItem[]      @relation("GiftItems")
+  inventory       InventoryItem[] @relation("InventoryPrizes")
+  case            CaseItem[]      @relation("GiftItems")
+  payouts         Payout[]
+  upgradesFrom    Upgrade[]       @relation("UpgradeFromPrize")
+  upgradesTo      Upgrade[]       @relation("UpgradeToPrize")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -101,6 +107,54 @@ model CaseItem {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Payout {
+  id        Int      @id @default(autoincrement())
+  userId    String
+  prizeId   Int
+
+  user User @relation(fields: [userId], references: [id])
+  prize Prize @relation(fields: [prizeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+enum UpgradeMultiplier {
+  X1_5
+  X2
+  X3
+  X5
+  X10
+}
+
+model UpgradeChance {
+  id         Int                @id @default(autoincrement())
+  multiplier UpgradeMultiplier  @unique
+  chance     Decimal            // Success chance as decimal (0.0 - 1.0)
+
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+model Upgrade {
+  id           Int                @id @default(autoincrement())
+  userId       String
+  fromPrizeId  Int
+  toPrizeId    Int?               // Nullable because it's null if upgrade failed
+  multiplier   UpgradeMultiplier
+  chance       Decimal            // Chance at the time of upgrade
+  success      Boolean            // Whether the upgrade succeeded
+
+  user      User   @relation(fields: [userId], references: [id])
+  fromPrize Prize  @relation("UpgradeFromPrize", fields: [fromPrizeId], references: [id])
+  toPrize   Prize? @relation("UpgradeToPrize", fields: [toPrizeId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([userId, createdAt])
 }
 
 model Case {

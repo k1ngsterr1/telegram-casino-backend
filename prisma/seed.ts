@@ -195,6 +195,283 @@ async function main() {
   console.log(`Server Seed: ${serverSeed}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
 
+  console.log('\nSeeding prizes...');
+
+  // Create prizes for cases
+  const prizes = [
+    { name: '100 Coins', amount: 100, url: 'https://via.placeholder.com/100' },
+    { name: '250 Coins', amount: 250, url: 'https://via.placeholder.com/100' },
+    { name: '500 Coins', amount: 500, url: 'https://via.placeholder.com/100' },
+    {
+      name: '1000 Coins',
+      amount: 1000,
+      url: 'https://via.placeholder.com/100',
+    },
+    {
+      name: '2500 Coins',
+      amount: 2500,
+      url: 'https://via.placeholder.com/100',
+    },
+    {
+      name: '5000 Coins',
+      amount: 5000,
+      url: 'https://via.placeholder.com/100',
+    },
+  ];
+
+  const createdPrizes = [];
+  for (let i = 0; i < prizes.length; i++) {
+    const prizeData = prizes[i];
+    const prize = await prisma.prize.upsert({
+      where: { id: i + 1 },
+      update: prizeData,
+      create: { id: i + 1, ...prizeData },
+    });
+    createdPrizes.push(prize);
+    console.log(`✓ Prize created: ${prizeData.name} (ID: ${prize.id})`);
+  }
+
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('🎁 PRIZES CREATED');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  prizes.forEach((p) => console.log(`${p.name} - ${p.amount} coins`));
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+  console.log('\nSeeding cases...');
+
+  // Create cases
+  const cases = [
+    {
+      id: 1,
+      name: 'Bronze Case',
+      price: 100,
+      preview: 'https://via.placeholder.com/200',
+    },
+    {
+      id: 2,
+      name: 'Silver Case',
+      price: 250,
+      preview: 'https://via.placeholder.com/200',
+    },
+    {
+      id: 3,
+      name: 'Gold Case',
+      price: 500,
+      preview: 'https://via.placeholder.com/200',
+    },
+  ];
+
+  for (const caseData of cases) {
+    await prisma.case.upsert({
+      where: { id: caseData.id },
+      update: caseData,
+      create: caseData,
+    });
+    console.log(`✓ Case created: ${caseData.name} (${caseData.price} coins)`);
+  }
+
+  console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  console.log('📦 CASES CREATED');
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+  cases.forEach((c) => console.log(`${c.name} - ${c.price} coins`));
+  console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+
+  console.log('\nSeeding case items...');
+
+  // Create case items with chances
+  const caseItems = [
+    // Bronze Case items
+    { name: 'Common Prize', chance: 0.5, prizeId: 1, caseId: 1 },
+    { name: 'Uncommon Prize', chance: 0.3, prizeId: 2, caseId: 1 },
+    { name: 'Rare Prize', chance: 0.15, prizeId: 3, caseId: 1 },
+    { name: 'Epic Prize', chance: 0.05, prizeId: 4, caseId: 1 },
+    // Silver Case items
+    { name: 'Uncommon Prize', chance: 0.4, prizeId: 2, caseId: 2 },
+    { name: 'Rare Prize', chance: 0.35, prizeId: 3, caseId: 2 },
+    { name: 'Epic Prize', chance: 0.2, prizeId: 4, caseId: 2 },
+    { name: 'Legendary Prize', chance: 0.05, prizeId: 5, caseId: 2 },
+    // Gold Case items
+    { name: 'Rare Prize', chance: 0.3, prizeId: 3, caseId: 3 },
+    { name: 'Epic Prize', chance: 0.35, prizeId: 4, caseId: 3 },
+    { name: 'Legendary Prize', chance: 0.25, prizeId: 5, caseId: 3 },
+    { name: 'Mythic Prize', chance: 0.1, prizeId: 6, caseId: 3 },
+  ];
+
+  for (const itemData of caseItems) {
+    await prisma.caseItem.create({
+      data: itemData,
+    });
+  }
+
+  console.log(`✓ ${caseItems.length} case items created\n`);
+
+  console.log('\nSeeding transactions data...');
+
+  // Get all users
+  const allUsers = await prisma.user.findMany();
+  const activeUsers = allUsers.filter((u) => !u.isBanned);
+
+  if (activeUsers.length === 0) {
+    console.log('⚠️  No active users found. Skipping transaction seeding.');
+  } else {
+    // Create aviator games with different dates (last 7 days)
+    const now = new Date();
+    const aviatorGames = [];
+
+    for (let i = 6; i >= 0; i--) {
+      const gameDate = new Date(now);
+      gameDate.setDate(gameDate.getDate() - i);
+      gameDate.setHours(10 + (i % 12), 0, 0, 0);
+
+      // Create 3-5 games per day
+      const gamesPerDay = 3 + Math.floor(Math.random() * 3);
+      for (let j = 0; j < gamesPerDay; j++) {
+        const gameTime = new Date(gameDate);
+        gameTime.setHours(gameTime.getHours() + j * 2);
+
+        const multiplier = 1.0 + Math.random() * 10; // Random multiplier 1.0 - 11.0
+        const aviator = await prisma.aviator.create({
+          data: {
+            startsAt: gameTime,
+            multiplier: multiplier,
+            status: 'FINISHED',
+            clientSeed: crypto.randomBytes(16).toString('hex'),
+            nonce: j,
+          },
+        });
+        aviatorGames.push(aviator);
+      }
+    }
+
+    console.log(`✓ Created ${aviatorGames.length} aviator games`);
+
+    // Create bets for aviator games
+    let totalBets = 0;
+    for (const game of aviatorGames) {
+      // Random number of bets per game (1-4)
+      const betsCount = 1 + Math.floor(Math.random() * 4);
+
+      for (let i = 0; i < betsCount; i++) {
+        const user =
+          activeUsers[Math.floor(Math.random() * activeUsers.length)];
+        const betAmount = [25, 50, 100, 200, 500, 1000][
+          Math.floor(Math.random() * 6)
+        ];
+
+        // 60% chance of cashing out
+        const didCashout = Math.random() < 0.6;
+        const cashedAt = didCashout
+          ? 1.0 + Math.random() * Number(game.multiplier) * 0.8 // Cash out before crash
+          : null;
+
+        await prisma.bet.create({
+          data: {
+            aviatorId: game.id,
+            userId: user.id,
+            amount: betAmount,
+            cashedAt: cashedAt,
+            createdAt: game.startsAt,
+            updatedAt: game.startsAt,
+          },
+        });
+        totalBets++;
+      }
+    }
+
+    console.log(`✓ Created ${totalBets} bets`);
+
+    // Create case openings (inventory items)
+    let totalCaseOpenings = 0;
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now);
+      day.setDate(day.getDate() - i);
+
+      // Random case openings per day (2-8)
+      const openingsPerDay = 2 + Math.floor(Math.random() * 7);
+
+      for (let j = 0; j < openingsPerDay; j++) {
+        const user =
+          activeUsers[Math.floor(Math.random() * activeUsers.length)];
+        const caseToOpen = cases[Math.floor(Math.random() * cases.length)];
+        const randomPrize =
+          createdPrizes[Math.floor(Math.random() * createdPrizes.length)];
+
+        const openingTime = new Date(day);
+        openingTime.setHours(8 + j * 2, Math.floor(Math.random() * 60), 0, 0);
+
+        await prisma.inventoryItem.create({
+          data: {
+            userId: user.id,
+            prizeId: randomPrize.id,
+            caseId: caseToOpen.id,
+            createdAt: openingTime,
+            updatedAt: openingTime,
+          },
+        });
+        totalCaseOpenings++;
+      }
+    }
+
+    console.log(`✓ Created ${totalCaseOpenings} case openings`);
+
+    // Create payments (deposits)
+    let totalPayments = 0;
+    for (let i = 6; i >= 0; i--) {
+      const day = new Date(now);
+      day.setDate(day.getDate() - i);
+
+      // Random payments per day (1-4)
+      const paymentsPerDay = 1 + Math.floor(Math.random() * 4);
+
+      for (let j = 0; j < paymentsPerDay; j++) {
+        const user =
+          activeUsers[Math.floor(Math.random() * activeUsers.length)];
+        const amount = [100, 250, 500, 1000, 2500, 5000][
+          Math.floor(Math.random() * 6)
+        ];
+
+        const paymentTime = new Date(day);
+        paymentTime.setHours(6 + j * 4, Math.floor(Math.random() * 60), 0, 0);
+
+        // 90% completed, 5% pending, 5% failed
+        const statusRand = Math.random();
+        const status =
+          statusRand < 0.9
+            ? 'COMPLETED'
+            : statusRand < 0.95
+              ? 'PENDING'
+              : 'FAILED';
+
+        await prisma.payment.create({
+          data: {
+            userId: user.id,
+            amount: amount,
+            currency: 'XTR',
+            status: status,
+            invoiceId: `inv_${crypto.randomBytes(8).toString('hex')}`,
+            createdAt: paymentTime,
+            updatedAt: paymentTime,
+          },
+        });
+        totalPayments++;
+      }
+    }
+
+    console.log(`✓ Created ${totalPayments} payments`);
+
+    console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('💰 TRANSACTION DATA SEEDED');
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log(`Aviator Games:    ${aviatorGames.length}`);
+    console.log(`Bets:             ${totalBets}`);
+    console.log(`Case Openings:    ${totalCaseOpenings}`);
+    console.log(`Payments:         ${totalPayments}`);
+    console.log(
+      `Total Transactions: ~${totalBets * 2 + totalCaseOpenings + totalPayments} (including wins)`,
+    );
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n');
+  }
+
   console.log('Seeding complete!');
   console.log('Remember to set TELEGRAM_BOT_TOKEN via the admin API endpoint.');
 }
