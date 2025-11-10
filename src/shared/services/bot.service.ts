@@ -8,7 +8,9 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { Bot, InlineKeyboard } from 'grammy';
 import { PrismaService } from './prisma.service';
-import { SystemKey } from '@prisma/client';
+import { LanguageCode, PaymentStatus, SystemKey } from '@prisma/client';
+import { CreateInvoiceDto } from '../dto/invoice.dto';
+import { getMessage } from '../consts/messages.consts';
 
 @Injectable()
 export class BotService implements OnModuleInit, OnModuleDestroy {
@@ -32,14 +34,15 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
 
   private setup() {
     this.bot.command('start', async (ctx) => {
-      const keyboard = new InlineKeyboard().webApp(
-        '🎮 Casino Bot',
-        this.webAppUrl,
-      );
-
       const telegramId = ctx.from.id;
       const username = ctx.from.username || 'Unknown';
-      const languageCode = ctx.from.language_code === 'ru' ? 'ru' : 'en';
+      const languageCode =
+        ctx.from.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
+
+      const keyboard = new InlineKeyboard().webApp(
+        getMessage(languageCode, 'bot.buttonText'),
+        this.webAppUrl,
+      );
 
       await Promise.all([
         this.prisma.user.upsert({
@@ -51,11 +54,98 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             languageCode: languageCode,
           },
         }),
-        ctx.reply('Welcome to Casino Bot!', {
+        ctx.reply(getMessage(languageCode, 'bot.welcome'), {
           reply_markup: keyboard,
           parse_mode: 'Markdown',
         }),
       ]);
+    });
+
+    this.bot.on('message', async (ctx) => {
+      if (ctx.message.successful_payment) {
+        try {
+          const payload = ctx.message.successful_payment.invoice_payload;
+          const paymentId = payload.split('_')[1];
+
+          const payment = await this.prisma.$transaction(async (tx) => {
+            const payment = await tx.payment.update({
+              where: { id: paymentId },
+              data: {
+                status: PaymentStatus.COMPLETED,
+                invoiceId:
+                  ctx.message.successful_payment.telegram_payment_charge_id,
+              },
+              select: {
+                userId: true,
+                amount: true,
+                user: {
+                  select: {
+                    languageCode: true,
+                  },
+                },
+              },
+            });
+            await tx.user.update({
+              where: { id: payment.userId },
+              data: {
+                balance: { increment: payment.amount },
+              },
+            });
+            return payment;
+          });
+
+          const languageCode = payment.user.languageCode;
+          await ctx.reply(getMessage(languageCode, 'payment.success'));
+        } catch (error) {
+          const languageCode =
+            ctx.from?.language_code === 'ru'
+              ? LanguageCode.ru
+              : LanguageCode.en;
+          await ctx.reply(getMessage(languageCode, 'payment.failed'));
+        }
+      }
+
+      if (ctx.message.text && ctx.message.text.startsWith('/')) {
+        const languageCode =
+          ctx.from?.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
+        await ctx.reply(getMessage(languageCode, 'bot.unknownCommand'));
+      }
+    });
+
+    this.bot.on('pre_checkout_query', async (ctx) => {
+      try {
+        const payload = ctx.preCheckoutQuery.invoice_payload;
+        const languageCode =
+          ctx.from?.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
+
+        if (!payload.startsWith('payment_')) {
+          await ctx.answerPreCheckoutQuery(false, {
+            error_message: getMessage(languageCode, 'payment.invalidRequest'),
+          });
+          return;
+        }
+
+        const paymentId = payload.split('_')[1];
+        const payment = await this.prisma.payment.findUnique({
+          where: { id: paymentId },
+        });
+
+        if (!payment) {
+          await ctx.answerPreCheckoutQuery(false, {
+            error_message: getMessage(languageCode, 'payment.notFound'),
+          });
+          return;
+        }
+
+        await ctx.answerPreCheckoutQuery(true);
+      } catch (error) {
+        this.logger.error('Failed to answer pre-checkout query: ', error);
+        const languageCode =
+          ctx.from?.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
+        await ctx.answerPreCheckoutQuery(false, {
+          error_message: getMessage(languageCode, 'payment.processingError'),
+        });
+      }
     });
   }
 
@@ -185,6 +275,22 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     } catch (error) {
       this.logger.error('Failed to reload WebApp URL', error as Error);
       throw error;
+    }
+  }
+
+  async createInvoice(data: CreateInvoiceDto) {
+    try {
+      const invoice = await this.bot.api.createInvoiceLink(
+        data.title,
+        data.description,
+        data.payload,
+        '',
+        'XTR',
+        data.prices,
+      );
+      return { invoice: invoice };
+    } catch (error) {
+      this.logger.error('Failed to create invoice link: ', error);
     }
   }
 }

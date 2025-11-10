@@ -4,6 +4,7 @@ import { PrismaService } from '../shared/services/prisma.service';
 import * as bcrypt from 'bcrypt';
 import { AdminLoginDto } from './dto/admin-login.dto';
 import { AdminResponseDto } from './dto/admin-response.dto';
+import { Role } from '@prisma/client';
 
 @Injectable()
 export class AuthService {
@@ -22,14 +23,17 @@ export class AuthService {
     }
 
     const isPasswordValid = await bcrypt.compare(dto.password, admin.password);
+    const user = await this.prisma.user.findUnique({
+      where: { telegramId: dto.telegramId },
+    });
 
     if (!isPasswordValid) {
       throw new HttpException('Invalid credentials', 401);
     }
 
     const payload = {
-      id: admin.id,
-      role: 'ADMIN',
+      id: user.id,
+      role: Role.ADMIN,
     };
 
     const accessToken = this.jwtService.sign(payload);

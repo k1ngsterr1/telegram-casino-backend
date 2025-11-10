@@ -11,7 +11,7 @@ import { Server, Socket } from 'socket.io';
 import { Logger, UseGuards } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { PrismaService } from '../shared/services/prisma.service';
-import { AviatorService } from './aviator.service';
+import { AviatorService } from '../admin/aviator/aviator.service';
 import { WsJwtGuard } from './guards/ws-jwt.guard';
 
 @WebSocketGateway({

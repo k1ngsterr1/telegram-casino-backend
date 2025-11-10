@@ -27,7 +27,20 @@ enum LanguageCode {
 enum SystemKey {
   TELEGRAM_BOT_TOKEN
   WEBAPP_URL
-  AVIATOR_CHANCES
+  AVIATOR
+  AVIATOR_SERVER_SEED
+  DEPOSIT
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+}
+
+enum Currency {
+  XTR
+  TON
 }
 
 model User {
@@ -41,6 +54,7 @@ model User {
 
   inventory    InventoryItem[] @relation("UserInventory")
   bets         Bet[]
+  payments     Payment[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -107,6 +121,8 @@ model Aviator {
   startsAt    DateTime
   multiplier  Decimal
   status      AviatorStatus @default(ACTIVE)
+  clientSeed  String?
+  nonce       Int     @default(0)
 
   bets Bet[]
 
@@ -128,6 +144,20 @@ model Bet {
 
   aviator Aviator @relation(fields: [aviatorId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Payment {
+  id         String      @id @default(uuid())
+  userId     String
+  amount     Decimal
+  currency   Currency
+  status     PaymentStatus @default(PENDING)
+  invoiceId  String?   @unique
+
+  user User @relation(fields: [userId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

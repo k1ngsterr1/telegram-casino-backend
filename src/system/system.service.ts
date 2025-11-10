@@ -1,9 +1,8 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '../shared/services/prisma.service';
 import { BotService } from '../shared/services/bot.service';
-import { AviatorService } from '../websocket/aviator.service';
 import { UpdateBotTokenDto } from './dto/update-bot-token.dto';
-import { UpdateAviatorChancesDto } from './dto/update-aviator-chances.dto';
+import { UpdateDepositSettingsDto } from './dto/update-deposit-settings.dto';
 import { SystemKey } from '@prisma/client';
 
 @Injectable()
@@ -13,7 +12,6 @@ export class SystemService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly botService: BotService,
-    private readonly aviatorService: AviatorService,
   ) {}
 
   /**
@@ -28,7 +26,8 @@ export class SystemService {
       return systemVariables.map((variable) => ({
         key: variable.key,
         value:
-          variable.key === SystemKey.AVIATOR_CHANCES
+          variable.key === SystemKey.AVIATOR ||
+          variable.key === SystemKey.DEPOSIT
             ? JSON.parse(variable.value)
             : variable.value,
       }));
@@ -54,7 +53,8 @@ export class SystemService {
       return {
         key: variable.key,
         value:
-          variable.key === SystemKey.AVIATOR_CHANCES
+          variable.key === SystemKey.AVIATOR ||
+          variable.key === SystemKey.DEPOSIT
             ? JSON.parse(variable.value)
             : variable.value,
       };
@@ -95,39 +95,6 @@ export class SystemService {
   }
 
   /**
-   * Update aviator chances configuration
-   */
-  async updateAviatorChances(dto: UpdateAviatorChancesDto) {
-    try {
-      // Validate ranges
-      this.validateAviatorRanges(dto.ranges);
-
-      const updated = await this.prisma.system.upsert({
-        where: { key: SystemKey.AVIATOR_CHANCES },
-        update: { value: JSON.stringify(dto.ranges) },
-        create: {
-          key: SystemKey.AVIATOR_CHANCES,
-          value: JSON.stringify(dto.ranges),
-        },
-      });
-
-      // Reload aviator chances in aviator service
-      await this.aviatorService.reloadAviatorChances();
-
-      return {
-        key: updated.key,
-        value: JSON.parse(updated.value),
-      };
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      this.logger.error('Failed to update aviator chances', error);
-      throw new HttpException('Failed to update aviator chances', 500);
-    }
-  }
-
-  /**
    * Update WebApp URL
    */
   async updateWebAppUrl(url: string) {
@@ -155,37 +122,32 @@ export class SystemService {
   }
 
   /**
-   * Validate aviator ranges (no overlaps, sum of chances = 100%, from < to)
+   * Update deposit settings (min deposit, max withdrawal, commission)
    */
-  private validateAviatorRanges(ranges: UpdateAviatorChancesDto['ranges']) {
-    // Check if from < to for all ranges
-    for (const range of ranges) {
-      if (range.from >= range.to) {
-        throw new HttpException(
-          `Invalid range: 'from' (${range.from}) must be less than 'to' (${range.to})`,
-          400,
-        );
-      }
-    }
+  async updateDepositSettings(dto: UpdateDepositSettingsDto) {
+    try {
+      const depositSettings = {
+        minDeposit: dto.minDeposit,
+        maxWithdrawal: dto.maxWithdrawal,
+        withdrawalCommission: dto.withdrawalCommission,
+      };
 
-    // Check for overlaps
-    const sortedRanges = [...ranges].sort((a, b) => a.from - b.from);
-    for (let i = 0; i < sortedRanges.length - 1; i++) {
-      if (sortedRanges[i].to > sortedRanges[i + 1].from) {
-        throw new HttpException(
-          `Overlapping ranges detected: [${sortedRanges[i].from}-${sortedRanges[i].to}] and [${sortedRanges[i + 1].from}-${sortedRanges[i + 1].to}]`,
-          400,
-        );
-      }
-    }
+      const updated = await this.prisma.system.upsert({
+        where: { key: SystemKey.DEPOSIT },
+        update: { value: JSON.stringify(depositSettings) },
+        create: {
+          key: SystemKey.DEPOSIT,
+          value: JSON.stringify(depositSettings),
+        },
+      });
 
-    // Check if sum of chances equals 100%
-    const totalChance = ranges.reduce((sum, range) => sum + range.chance, 0);
-    if (Math.abs(totalChance - 100) > 0.01) {
-      throw new HttpException(
-        `Sum of chances must equal 100%, got ${totalChance}%`,
-        400,
-      );
+      return {
+        key: updated.key,
+        value: JSON.parse(updated.value),
+      };
+    } catch (error) {
+      this.logger.error('Failed to update deposit settings', error);
+      throw new HttpException('Failed to update deposit settings', 500);
     }
   }
 }

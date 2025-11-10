@@ -82,9 +82,7 @@ export class AdminCaseService {
           take: limit,
           orderBy: { createdAt: 'desc' },
           include: {
-            _count: {
-              select: { items: true },
-            },
+            items: true,
           },
         }),
         this.prisma.case.count(),

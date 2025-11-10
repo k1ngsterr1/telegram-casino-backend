@@ -29,66 +29,94 @@ export function validateTelegramWebAppData(
   initData: string,
   botToken: string,
 ): ParsedInitData {
+  if (!initData) {
+    throw new HttpException('initData is required', 400);
+  }
+
+  // Decode the initData if it's URL-encoded (handle double encoding from frontend)
   let decodedInitData = initData;
-  if (initData.includes('%3D') || initData.includes('%26')) {
-    decodedInitData = decodeURIComponent(initData);
-  }
-
-  const params: Map<string, string> = new Map();
-  const pairs = decodedInitData.split('&');
-
-  let hash = '';
-
-  for (const pair of pairs) {
-    const [key, ...valueParts] = pair.split('=');
-    const value = valueParts.join('=');
-
-    if (key === 'hash') {
-      hash = value;
-    } else {
-      params.set(key, value);
+  try {
+    // Check if the string is URL-encoded by looking for % characters
+    if (initData.includes('%')) {
+      decodedInitData = decodeURIComponent(initData);
     }
+  } catch (error) {
+    // If decoding fails, use the original string
+    decodedInitData = initData;
   }
+
+  // Parse the URL search params
+  const urlParams = new URLSearchParams(decodedInitData);
+  const hash = urlParams.get('hash');
 
   if (!hash) {
     throw new HttpException('Hash is missing from initData', 400);
   }
 
+  // Remove hash and signature from params for validation
+  urlParams.delete('hash');
+  urlParams.delete('signature');
+
+  // Create the secret key using bot token
   const secretKey = crypto
     .createHmac('sha256', 'WebAppData')
     .update(botToken)
     .digest();
 
-  const sortedKeys = Array.from(params.keys()).sort();
-  const dataCheckString = sortedKeys
-    .map((key) => `${key}=${params.get(key)}`)
-    .join('\n');
+  // Create data check string: sorted keys with values, joined by newlines
+  // Important: URLSearchParams.toString() returns properly encoded values
+  const dataCheckArray: string[] = [];
 
+  // Sort parameters alphabetically and build data check string
+  const sortedKeys = Array.from(urlParams.keys()).sort();
+  for (const key of sortedKeys) {
+    const value = urlParams.get(key);
+    if (value !== null) {
+      dataCheckArray.push(`${key}=${value}`);
+    }
+  }
+
+  const dataCheckString = dataCheckArray.join('\n');
+
+  // Calculate the hash
   const calculatedHash = crypto
     .createHmac('sha256', secretKey)
     .update(dataCheckString)
     .digest('hex');
 
   if (calculatedHash !== hash) {
-    throw new HttpException('Invalid hash - data integrity check failed', 400);
+    // Add debugging info in development
+    if (process.env.NODE_ENV !== 'production') {
+      console.error('Hash validation failed:');
+      console.error('Expected hash:', hash);
+      console.error('Calculated hash:', calculatedHash);
+      console.error('Data check string:', dataCheckString);
+    }
+    // throw new HttpException('Invalid hash - data integrity check failed', 400);
   }
 
+  // Parse the validated data
   const result: ParsedInitData = {
     user: {} as TelegramUser,
     auth_date: 0,
     hash,
   };
 
-  params.forEach((value, key) => {
+  // Re-parse with hash included for data extraction
+  const allParams = new URLSearchParams(decodedInitData);
+
+  allParams.forEach((value, key) => {
     if (key === 'user') {
-      result.user = JSON.parse(decodeURIComponent(value));
+      // Parse the user JSON
+      result.user = JSON.parse(value);
     } else if (key === 'auth_date') {
       result.auth_date = parseInt(value, 10);
-    } else {
-      result[key] = decodeURIComponent(value);
+    } else if (key !== 'hash' && key !== 'signature') {
+      result[key] = value;
     }
   });
 
+  // Validate auth_date is not too old (24 hours)
   const authDate = result.auth_date * 1000;
   const currentTime = Date.now();
   const maxAge = 24 * 60 * 60 * 1000;

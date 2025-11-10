@@ -15,8 +15,8 @@ import {
 } from '@nestjs/swagger';
 import { SystemService } from './system.service';
 import { UpdateBotTokenDto } from './dto/update-bot-token.dto';
-import { UpdateAviatorChancesDto } from './dto/update-aviator-chances.dto';
 import { UpdateWebAppUrlDto } from './dto/update-webapp-url.dto';
+import { UpdateDepositSettingsDto } from './dto/update-deposit-settings.dto';
 import { AdminGuard } from '../shared/guards/admin.guard';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -50,20 +50,20 @@ export class SystemController {
     return this.systemService.updateBotToken(dto);
   }
 
-  @Put('aviator-chances')
-  @ApiOperation({ summary: 'Update aviator multiplier chances configuration' })
-  @ApiResponse({
-    status: 200,
-    description: 'Aviator chances updated successfully',
-  })
-  async updateAviatorChances(@Body() dto: UpdateAviatorChancesDto) {
-    return this.systemService.updateAviatorChances(dto);
-  }
-
   @Put('webapp-url')
   @ApiOperation({ summary: 'Update WebApp URL' })
   @ApiResponse({ status: 200, description: 'WebApp URL updated successfully' })
   async updateWebAppUrl(@Body() dto: UpdateWebAppUrlDto) {
     return this.systemService.updateWebAppUrl(dto.url);
+  }
+
+  @Put('deposit-settings')
+  @ApiOperation({ summary: 'Update deposit settings' })
+  @ApiResponse({
+    status: 200,
+    description: 'Deposit settings updated successfully',
+  })
+  async updateDepositSettings(@Body() dto: UpdateDepositSettingsDto) {
+    return this.systemService.updateDepositSettings(dto);
   }
 }

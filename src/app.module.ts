@@ -6,10 +6,16 @@ import { UserModule } from './user/user.module';
 import { AdminUserModule } from './admin/user/admin-user.module';
 import { AdminPrizeModule } from './admin/prize/admin-prize.module';
 import { AdminCaseModule } from './admin/case/admin-case.module';
+import { AdminAviatorModule } from './admin/aviator/admin-aviator.module';
+import { AdminStatisticsModule } from './admin/statistics/admin-statistics.module';
 import { CaseModule } from './case/case.module';
 import { WebsocketModule } from './websocket/websocket.module';
 import { SystemModule } from './system/system.module';
+import { PaymentModule } from './payment/payment.module';
 import { AuthModule } from './auth/auth.module';
+import { UploadModule } from './upload/upload.module';
+import { join } from 'path';
+import { ServeStaticModule } from '@nestjs/serve-static';
 
 @Module({
   imports: [
@@ -18,6 +24,10 @@ import { AuthModule } from './auth/auth.module';
       cache: true,
       validationOptions: { allowUnknown: true, abortEarly: true },
     }),
+    ServeStaticModule.forRoot({
+      rootPath: join(process.cwd(), 'uploads'),
+      serveRoot: '/uploads',
+    }),
     ScheduleModule.forRoot(),
     SharedModule,
     AuthModule,
@@ -25,9 +35,13 @@ import { AuthModule } from './auth/auth.module';
     AdminUserModule,
     AdminPrizeModule,
     AdminCaseModule,
+    AdminAviatorModule,
+    AdminStatisticsModule,
     CaseModule,
     WebsocketModule,
     SystemModule,
+    PaymentModule,
+    UploadModule,
   ],
 })
 export class AppModule {}

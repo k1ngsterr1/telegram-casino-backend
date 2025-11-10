@@ -4,68 +4,78 @@ import {
   OnModuleDestroy,
   Logger,
 } from '@nestjs/common';
-import { PrismaClient } from '@prisma/client';
+import { Prisma, PrismaClient } from '@prisma/client';
 
 @Injectable()
 export class PrismaService
   extends PrismaClient
   implements OnModuleInit, OnModuleDestroy
 {
-  private readonly logger = new Logger(PrismaService.name);
   private isConnected = false;
+  private promise: Promise<void> | null = null;
+  private readonly logger = new Logger(PrismaService.name);
 
   async onModuleInit() {
-    await this.connect();
+    await this.ensureConnected();
   }
 
-  async connect() {
+  async ensureConnected(maxRetries: number = 10, delayMs: number = 3000) {
+    // If already connected, return immediately
     if (this.isConnected) {
       return;
     }
 
-    try {
-      await this.$connect();
-      this.isConnected = true;
-      this.logger.log('Prisma connected successfully');
-    } catch (error) {
-      this.logger.error('Failed to connect to database', error);
-      throw error;
+    // If a connection attempt is already in progress, wait for it
+    if (this.promise) {
+      return this.promise;
     }
 
-    return this.isConnected;
+    // Start a new connection attempt and store the promise
+    this.promise = this.connectWithRetry(maxRetries, delayMs);
+
+    try {
+      await this.promise;
+    } finally {
+      // Clear the promise once connection attempt is complete (success or failure)
+      this.promise = null;
+    }
   }
 
-  async ensureConnected() {
-    if (!this.isConnected) {
-      let retries = 3;
-      let lastError: Error | null = null;
+  private async connectWithRetry(maxRetries: number, delayMs: number) {
+    let lastError: Error | null = null;
 
-      while (retries > 0) {
-        try {
-          await this.connect();
-          return;
-        } catch (error) {
-          lastError = error as Error;
-          retries--;
-          if (retries > 0) {
-            this.logger.warn(
-              `Connection failed, retrying... (${retries} attempts left)`,
-            );
-            await new Promise((resolve) => setTimeout(resolve, 1000));
-          }
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
+      try {
+        this.logger.log(
+          `Attempting to connect to database (attempt ${attempt}/${maxRetries})...`,
+        );
+        await this.$connect();
+        this.isConnected = true;
+        this.logger.log('Successfully connected to database');
+        return;
+      } catch (error) {
+        lastError = error as Error;
+        this.logger.warn(
+          `Failed to connect to database (attempt ${attempt}/${maxRetries}): ${lastError.message}`,
+        );
+
+        if (attempt < maxRetries) {
+          const delay = delayMs * attempt; // Exponential backoff
+          this.logger.log(`Retrying in ${delay}ms...`);
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
       }
-
-      this.logger.error(
-        'Failed to connect to database after multiple attempts',
-      );
-      throw lastError || new Error('Failed to connect to database');
     }
+
+    this.logger.error(
+      `Failed to connect to database after ${maxRetries} attempts`,
+    );
+    throw new Error(
+      `Database connection failed after ${maxRetries} retries: ${lastError?.message || 'Unknown error'}`,
+    );
   }
 
   async onModuleDestroy() {
     await this.$disconnect();
-    this.isConnected = false;
-    this.logger.log('Prisma disconnected');
   }
 }

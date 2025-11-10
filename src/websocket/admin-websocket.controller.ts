@@ -7,10 +7,11 @@ import {
 } from '@nestjs/swagger';
 import { AdminGuard } from '../shared/guards/admin.guard';
 import { WebsocketGateway } from './websocket.gateway';
+import { AuthGuard } from '@nestjs/passport';
 
 @ApiTags('Admin - WebSocket')
 @Controller('admin/websocket')
-@UseGuards(AdminGuard)
+@UseGuards(AuthGuard('jwt'), AdminGuard)
 @ApiBearerAuth('JWT')
 export class AdminWebsocketController {
   constructor(private readonly websocketGateway: WebsocketGateway) {}

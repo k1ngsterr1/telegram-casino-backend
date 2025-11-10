@@ -1,6 +1,7 @@
 import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '../shared/services/prisma.service';
 import { GetCasesDto, CaseSortBy } from './dto/get-cases.dto';
+import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
 import { CaseResponseDto, FreeCaseCooldownDto } from './dto/case-response.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 
@@ -128,6 +129,87 @@ export class CaseService {
         throw error;
       }
       this.logger.error('Failed to get cases', error);
+      throw new HttpException('Failed to get cases', 500);
+    }
+  }
+
+  /**
+   * Get all cases with cursor-based pagination
+   * More efficient for large datasets and real-time updates
+   */
+  async findAllCursor(getCasesCursorDto: GetCasesCursorDto) {
+    try {
+      const {
+        cursor,
+        limit = 20,
+        sortBy = CaseSortBy.PRICE_ASC,
+      } = getCasesCursorDto;
+
+      // Determine order direction and field
+      let orderBy: any = {};
+      switch (sortBy) {
+        case CaseSortBy.PRICE_ASC:
+          orderBy = { price: 'asc' };
+          break;
+        case CaseSortBy.PRICE_DESC:
+          orderBy = { price: 'desc' };
+          break;
+        case CaseSortBy.NAME_ASC:
+          orderBy = { name: 'asc' };
+          break;
+        case CaseSortBy.NAME_DESC:
+          orderBy = { name: 'desc' };
+          break;
+        case CaseSortBy.CREATED_ASC:
+          orderBy = { createdAt: 'asc' };
+          break;
+        case CaseSortBy.CREATED_DESC:
+          orderBy = { createdAt: 'desc' };
+          break;
+      }
+
+      // Fetch limit + 1 to check if there's a next page
+      const cases = await this.prisma.case.findMany({
+        take: limit + 1,
+        skip: cursor ? 1 : 0, // Skip the cursor item itself
+        cursor: cursor ? { id: cursor } : undefined,
+        select: {
+          id: true,
+          name: true,
+          price: true,
+          preview: true,
+          createdAt: true,
+        },
+        orderBy,
+      });
+
+      // Check if there's a next page
+      const hasNextPage = cases.length > limit;
+      const data = hasNextPage ? cases.slice(0, limit) : cases;
+
+      // Get next cursor (last item's ID)
+      const nextCursor = hasNextPage ? data[data.length - 1].id : null;
+
+      return {
+        data: data.map((c) => ({
+          id: c.id,
+          name: c.name,
+          price: c.price,
+          preview: c.preview,
+          isFree: c.price === 0,
+          createdAt: c.createdAt,
+        })),
+        meta: {
+          nextCursor,
+          hasNextPage,
+          limit,
+        },
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to get cases with cursor pagination', error);
       throw new HttpException('Failed to get cases', 500);
     }
   }

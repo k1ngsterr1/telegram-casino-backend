@@ -12,9 +12,7 @@ async function bootstrap() {
   }
   app.enableCors({
     origin: [
-      'https://tma-frontend-production-1702.up.railway.app',
-      'https://miniapp.arcticpay.app',
-      'https://admin-panel.arcticpay.app',
+      'https://gifty-realm-production.up.railway.app',
       'http://localhost:3000',
       'https://casino-admin-panel-production.up.railway.app',
     ],

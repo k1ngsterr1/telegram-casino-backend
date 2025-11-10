@@ -19,6 +19,7 @@ import { UserGuard } from '../shared/guards/user.guard';
 import { User } from '../shared/decorator/user.decorator';
 import { OpenCaseDto } from './dto/open-case.dto';
 import { GetCasesDto } from './dto/get-cases.dto';
+import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
 import { CaseResponseDto } from './dto/case-response.dto';
 
 @ApiTags('Cases')
@@ -34,6 +35,16 @@ export class CaseController {
   })
   async findAll(@Query() getCasesDto: GetCasesDto) {
     return this.caseService.findAll(getCasesDto);
+  }
+
+  @Get('cursor')
+  @ApiOperation({ summary: 'Get all cases with cursor-based pagination' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns cursor-paginated list of cases',
+  })
+  async findAllCursor(@Query() getCasesCursorDto: GetCasesCursorDto) {
+    return this.caseService.findAllCursor(getCasesCursorDto);
   }
 
   @Get(':id')

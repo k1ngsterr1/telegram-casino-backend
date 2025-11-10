@@ -4,81 +4,213 @@ import {
   OnModuleInit,
   HttpException,
 } from '@nestjs/common';
-import { PrismaService } from '../shared/services/prisma.service';
+import { PrismaService } from '../../shared/services/prisma.service';
 import { SystemKey, AviatorStatus } from '@prisma/client';
-import { AviatorRangeDto } from '../system/dto/aviator-range.dto';
+import * as crypto from 'crypto';
+
+export interface AviatorSettings {
+  minMultiplier: number;
+  maxMultiplier: number;
+  minBet: number;
+  maxBet: number;
+  targetRtp: number;
+  instantCrashP: number;
+}
 
 @Injectable()
 export class AviatorService implements OnModuleInit {
   private readonly logger = new Logger(AviatorService.name);
-  private aviatorChances: AviatorRangeDto[] = [];
+  private aviatorSettings: AviatorSettings = {
+    minMultiplier: 1.0,
+    maxMultiplier: 100000,
+    minBet: 25,
+    maxBet: 10000,
+    targetRtp: 0.89,
+    instantCrashP: 0.01,
+  };
+  private serverSeed: string = '';
 
   constructor(private readonly prisma: PrismaService) {}
 
   async onModuleInit() {
-    await this.loadAviatorChances();
+    await this.loadAviatorSettings();
+    await this.loadServerSeed();
   }
 
   /**
-   * Load and cache AVIATOR_CHANCES from system variables
+   * Load and cache server seed from system variables
    */
-  private async loadAviatorChances() {
+  private async loadServerSeed() {
     try {
       await this.prisma.ensureConnected();
 
       const systemVar = await this.prisma.system.findUnique({
-        where: { key: SystemKey.AVIATOR_CHANCES },
+        where: { key: SystemKey.AVIATOR_SERVER_SEED },
+      });
+
+      if (!systemVar) {
+        // Generate a default server seed
+        this.serverSeed = this.generateRandomSeed();
+        await this.prisma.system.create({
+          data: {
+            key: SystemKey.AVIATOR_SERVER_SEED,
+            value: this.serverSeed,
+          },
+        });
+        this.logger.warn('Server seed not found, generated new one');
+      } else {
+        this.serverSeed = systemVar.value;
+      }
+
+      this.logger.log('Server seed loaded successfully');
+    } catch (error) {
+      this.logger.error('Failed to load server seed', error);
+      throw new HttpException('Failed to load server seed', 500);
+    }
+  }
+
+  /**
+   * Load and cache AVIATOR settings from system variables
+   */
+  private async loadAviatorSettings() {
+    try {
+      await this.prisma.ensureConnected();
+
+      const systemVar = await this.prisma.system.findUnique({
+        where: { key: SystemKey.AVIATOR },
       });
 
       if (!systemVar) {
         this.logger.warn(
-          'AVIATOR_CHANCES not found in system variables, using defaults',
+          'AVIATOR settings not found in system variables, using defaults',
         );
-        // Set default chances if not found
-        this.aviatorChances = [
-          { from: 1, to: 2, chance: 70 },
-          { from: 2, to: 5, chance: 20 },
-          { from: 5, to: 10, chance: 8 },
-          { from: 10, to: 20, chance: 2 },
-        ];
       } else {
-        this.aviatorChances = JSON.parse(systemVar.value);
+        this.aviatorSettings = JSON.parse(systemVar.value);
       }
 
-      this.logger.log('Aviator chances loaded successfully');
+      this.logger.log('Aviator settings loaded successfully');
     } catch (error) {
       this.logger.error(
-        'Failed to load aviator chances, using defaults',
+        'Failed to load aviator settings, using defaults',
         error,
       );
-      throw new HttpException('Failed to load aviator chances', 500);
+      throw new HttpException('Failed to load aviator settings', 500);
     }
   }
 
   /**
-   * Reload aviator chances from database (call after admin updates)
+   * Reload aviator settings from database (call after admin updates)
    */
-  async reloadAviatorChances() {
-    await this.loadAviatorChances();
+  async reloadAviatorSettings() {
+    await this.loadAviatorSettings();
   }
 
   /**
-   * Generate random multiplier based on chances configuration
+   * Reload server seed from database (call after admin updates)
    */
-  private generateMultiplier(): number {
-    const totalChance = this.aviatorChances.reduce((a, b) => a + b.chance, 0);
-    const random = Math.random() * totalChance;
-    let cumulativeChance = 0;
+  async reloadServerSeed() {
+    await this.loadServerSeed();
+  }
 
-    for (const range of this.aviatorChances) {
-      cumulativeChance += range.chance;
-      if (random <= cumulativeChance) {
-        const multiplier = range.from + Math.random() * (range.to - range.from);
-        return Math.round(multiplier * 100) / 100;
-      }
+  /**
+   * Get current server seed (admin only)
+   */
+  getServerSeed(): string {
+    return this.serverSeed;
+  }
+
+  /**
+   * Generate a random seed (64 hex characters)
+   */
+  private generateRandomSeed(): string {
+    return crypto.randomBytes(32).toString('hex');
+  }
+
+  /**
+   * Generate client seed (32 hex characters)
+   */
+  generateClientSeed(): string {
+    return crypto.randomBytes(16).toString('hex');
+  }
+
+  /**
+   * HMAC-SHA256 hash generation
+   */
+  private hmacSha256Hex(key: string, message: string): string {
+    return crypto.createHmac('sha256', key).update(message).digest('hex');
+  }
+
+  /**
+   * Generate uniform random value from hash (0, 1)
+   */
+  private uniformFromHash(hexHash: string): number {
+    // Take top 52 bits for precision
+    const top52Hex = hexHash.substring(0, 13); // 52 bits = 13 hex chars
+    const top52 = parseInt(top52Hex, 16);
+    const maxValue = Math.pow(2, 52);
+    return top52 / maxValue;
+  }
+
+  /**
+   * Check if hash is divisible by modulus (for instant crash)
+   */
+  private divisible(hexHash: string, modulus: number): boolean {
+    let val = 0;
+    const offset = hexHash.length % 4;
+    let i = offset > 0 ? offset - 4 : 0;
+
+    while (i < hexHash.length) {
+      const chunk = hexHash.substring(i, i + 4);
+      val = ((val << 16) + parseInt(chunk, 16)) % modulus;
+      i += 4;
     }
 
-    return this.aviatorChances[0]?.from || 1;
+    return val === 0;
+  }
+
+  /**
+   * Calculate crash multiplier using provably fair algorithm
+   * Based on HMAC-SHA256 with server seed, client seed, and nonce
+   */
+  private crashRoundMultiplier(
+    serverSeed: string,
+    clientSeed: string,
+    nonce: number,
+  ): number {
+    const { targetRtp, instantCrashP, minMultiplier, maxMultiplier } =
+      this.aviatorSettings;
+
+    // 1) Generate HMAC hash
+    const message = `${clientSeed}:${nonce}`;
+    const hexHash = this.hmacSha256Hex(serverSeed, message);
+
+    // 2) Instant crash check with probability instantCrashP
+    const instantCrashModulus = Math.max(2, Math.round(1.0 / instantCrashP));
+    if (this.divisible(hexHash, instantCrashModulus)) {
+      return minMultiplier; // 1.00x instant crash
+    }
+
+    // 3) Generate uniform random value and apply inverse distribution
+    let U = this.uniformFromHash(hexHash);
+    U = Math.max(U, 1e-12); // Protection from zero
+
+    // Calibration coefficient
+    const K = targetRtp * (1.0 - instantCrashP);
+    let multiplier = K / U;
+
+    // 4) Apply boundaries
+    multiplier = Math.max(multiplier, minMultiplier);
+    multiplier = Math.min(multiplier, maxMultiplier);
+
+    // Round to 2 decimal places
+    return Math.round(multiplier * 100) / 100;
+  }
+
+  /**
+   * Get current aviator settings
+   */
+  getAviatorSettings(): AviatorSettings {
+    return this.aviatorSettings;
   }
 
   /**
@@ -118,14 +250,37 @@ export class AviatorService implements OnModuleInit {
         return existingGame;
       }
 
+      // Get the latest nonce from database
+      const latestGame = await this.prisma.aviator.findFirst({
+        orderBy: {
+          nonce: 'desc',
+        },
+        select: {
+          nonce: true,
+        },
+      });
+
+      const nonce = latestGame ? latestGame.nonce + 1 : 1;
+
+      // Generate client seed
+      const clientSeed = this.generateClientSeed();
+
+      // Calculate multiplier using provably fair algorithm
+      const multiplier = this.crashRoundMultiplier(
+        this.serverSeed,
+        clientSeed,
+        nonce,
+      );
+
       // Create new game with startsAt = now + 6 seconds
       const startsAt = new Date(Date.now() + 6000);
-      const multiplier = this.generateMultiplier();
 
       const newGame = await this.prisma.aviator.create({
         data: {
           startsAt,
           multiplier,
+          clientSeed,
+          nonce,
           status: AviatorStatus.ACTIVE,
         },
         include: {
@@ -148,7 +303,7 @@ export class AviatorService implements OnModuleInit {
       });
 
       this.logger.log(
-        `Created new aviator game #${newGame.id} with multiplier ${multiplier}x, starts at ${startsAt.toISOString()}`,
+        `Created new aviator game #${newGame.id} with multiplier ${multiplier}x (nonce: ${nonce}, clientSeed: ${clientSeed}), starts at ${startsAt.toISOString()}`,
       );
 
       return newGame;
@@ -228,12 +383,14 @@ export class AviatorService implements OnModuleInit {
    */
   async placeBet(userId: string, aviatorId: number, amount: number) {
     try {
+      const { minBet, maxBet } = this.aviatorSettings;
+
       // Validate bet amount
-      if (amount < 25) {
-        throw new HttpException('Minimum bet amount is 25', 400);
+      if (amount < minBet) {
+        throw new HttpException(`Minimum bet amount is ${minBet}`, 400);
       }
-      if (amount > 10000) {
-        throw new HttpException('Maximum bet amount is 10000', 400);
+      if (amount > maxBet) {
+        throw new HttpException(`Maximum bet amount is ${maxBet}`, 400);
       }
 
       // Get the specific aviator game
