@@ -1,9 +1,18 @@
-import { Controller, Get, Post, Body, Query, UseGuards } from '@nestjs/common';
+import {
+  Controller,
+  Get,
+  Post,
+  Body,
+  Query,
+  Param,
+  UseGuards,
+} from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
   ApiResponse,
   ApiBearerAuth,
+  ApiParam,
 } from '@nestjs/swagger';
 import { UpgradeService } from './upgrade.service';
 import { UserGuard } from '../shared/guards/user.guard';
@@ -15,11 +24,48 @@ import { UpgradeResultDto } from './dto/upgrade-result.dto';
 import { GetUpgradeHistoryDto } from './dto/get-upgrade-history.dto';
 import { UpgradeHistoryResponseDto } from './dto/upgrade-history-response.dto';
 import { UpgradeStatsResponseDto } from './dto/upgrade-stats-response.dto';
+import { UpgradeChancePublicDto } from './dto/upgrade-chance-public.dto';
 
 @ApiTags('Upgrade')
 @Controller('upgrade')
 export class UpgradeController {
   constructor(private readonly upgradeService: UpgradeService) {}
+
+  @Get('chances')
+  @ApiOperation({ summary: 'Get all available upgrade chances (public)' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns all available upgrade multipliers and chances',
+    type: [UpgradeChancePublicDto],
+  })
+  async getUpgradeChances(): Promise<UpgradeChancePublicDto[]> {
+    return this.upgradeService.getUpgradeChances();
+  }
+
+  @Get('chances/:multiplier')
+  @ApiOperation({ summary: 'Get chance for specific multiplier (public)' })
+  @ApiParam({
+    name: 'multiplier',
+    description: 'Multiplier value',
+    example: 2,
+    type: Number,
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns chance for specific multiplier',
+    type: UpgradeChancePublicDto,
+  })
+  @ApiResponse({
+    status: 404,
+    description: 'Multiplier not found',
+  })
+  async getUpgradeChanceByMultiplier(
+    @Param('multiplier') multiplier: string,
+  ): Promise<UpgradeChancePublicDto> {
+    return this.upgradeService.getUpgradeChanceByMultiplier(
+      parseFloat(multiplier),
+    );
+  }
 
   @Get('options')
   @UseGuards(UserGuard)

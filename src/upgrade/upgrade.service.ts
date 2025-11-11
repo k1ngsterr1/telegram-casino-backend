@@ -10,12 +10,71 @@ import {
   UpgradeHistoryItemDto,
 } from './dto/upgrade-history-response.dto';
 import { UpgradeStatsResponseDto } from './dto/upgrade-stats-response.dto';
+import { UpgradeChancePublicDto } from './dto/upgrade-chance-public.dto';
 
 @Injectable()
 export class UpgradeService {
   private readonly logger = new Logger(UpgradeService.name);
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Get all available upgrade chances (public endpoint for frontend)
+   */
+  async getUpgradeChances(): Promise<UpgradeChancePublicDto[]> {
+    try {
+      await this.prisma.ensureConnected();
+
+      const upgradeChances = await this.prisma.upgradeChance.findMany({
+        orderBy: {
+          multiplier: 'asc',
+        },
+      });
+
+      return upgradeChances.map((chance) => ({
+        multiplier: Number(chance.multiplier),
+        chance: Number(chance.chance),
+        chancePercent: Math.round(Number(chance.chance) * 100),
+      }));
+    } catch (error) {
+      this.logger.error('Failed to get upgrade chances', error);
+      throw new HttpException('Failed to get upgrade chances', 500);
+    }
+  }
+
+  /**
+   * Get chance for specific multiplier (public endpoint)
+   */
+  async getUpgradeChanceByMultiplier(
+    multiplier: number,
+  ): Promise<UpgradeChancePublicDto> {
+    try {
+      await this.prisma.ensureConnected();
+
+      const upgradeChance = await this.prisma.upgradeChance.findUnique({
+        where: { multiplier },
+      });
+
+      if (!upgradeChance) {
+        throw new HttpException('Multiplier not found', 404);
+      }
+
+      return {
+        multiplier: Number(upgradeChance.multiplier),
+        chance: Number(upgradeChance.chance),
+        chancePercent: Math.round(Number(upgradeChance.chance) * 100),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to get upgrade chance by multiplier', error);
+      throw new HttpException(
+        'Failed to get upgrade chance by multiplier',
+        500,
+      );
+    }
+  }
 
   /**
    * Get upgrade options for a specific inventory item
