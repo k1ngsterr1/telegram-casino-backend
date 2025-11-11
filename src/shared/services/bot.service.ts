@@ -156,13 +156,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       // Hardcoded bot token
       this.token = '8556587427:AAFe7KM2FMk4fhTKtCtCzsVhpXMjqxfKeH8';
 
-      // Load WebApp URL from database or fallback to env
-      const webAppUrlRecord = await this.prisma.system.findUnique({
-        where: { key: SystemKey.WEBAPP_URL },
-        select: { value: true },
-      });
-      this.webAppUrl =
-        webAppUrlRecord?.value || this.configService.getOrThrow('WEBAPP_URL');
+      // Use production WebApp URL
+      this.webAppUrl = 'https://gifty-realm-production.up.railway.app';
 
       this.bot = new Bot(this.token);
 
