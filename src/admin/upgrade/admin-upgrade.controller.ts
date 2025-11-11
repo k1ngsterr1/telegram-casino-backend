@@ -75,29 +75,6 @@ export class AdminUpgradeController {
     return this.adminUpgradeService.updateUpgradeChance(dto);
   }
 
-  @Put('multiplier')
-  @ApiOperation({
-    summary: 'Edit multiplier value (change the multiplier itself)',
-  })
-  @ApiResponse({
-    status: 200,
-    description: 'Multiplier edited successfully',
-    type: UpgradeChanceResponseDto,
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Old multiplier not found',
-  })
-  @ApiResponse({
-    status: 400,
-    description: 'New multiplier already exists',
-  })
-  async editMultiplier(
-    @Body() dto: EditMultiplierDto,
-  ): Promise<UpgradeChanceResponseDto> {
-    return this.adminUpgradeService.editMultiplier(dto);
-  }
-
   @Delete('chance/:id')
   @ApiOperation({ summary: 'Delete upgrade chance by ID' })
   @ApiResponse({
