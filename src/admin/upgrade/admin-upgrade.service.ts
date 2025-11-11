@@ -2,7 +2,6 @@ import { Injectable, Logger, HttpException } from '@nestjs/common';
 import { PrismaService } from '../../shared/services/prisma.service';
 import { CreateUpgradeChanceDto } from './dto/create-upgrade-chance.dto';
 import { UpdateUpgradeChanceDto } from './dto/update-upgrade-chance.dto';
-import { DeleteUpgradeChanceDto } from './dto/delete-upgrade-chance.dto';
 import { UpgradeChanceResponseDto } from './dto/upgrade-chance-response.dto';
 
 @Injectable()
@@ -129,44 +128,6 @@ export class AdminUpgradeService {
       }
       this.logger.error('Failed to update upgrade chance', error);
       throw new HttpException('Failed to update upgrade chance', 500);
-    }
-  }
-
-  /**
-   * Delete upgrade chance multiplier
-   */
-  async deleteUpgradeChance(
-    dto: DeleteUpgradeChanceDto,
-  ): Promise<{ message: string }> {
-    try {
-      await this.prisma.ensureConnected();
-
-      // Check if multiplier exists
-      const existing = await this.prisma.upgradeChance.findUnique({
-        where: { multiplier: dto.multiplier },
-      });
-
-      if (!existing) {
-        throw new HttpException('Multiplier not found', 404);
-      }
-
-      await this.prisma.upgradeChance.delete({
-        where: {
-          multiplier: dto.multiplier,
-        },
-      });
-
-      this.logger.log(`Deleted upgrade chance: X${dto.multiplier}`);
-
-      return {
-        message: `Upgrade chance X${dto.multiplier} deleted successfully`,
-      };
-    } catch (error) {
-      if (error instanceof HttpException) {
-        throw error;
-      }
-      this.logger.error('Failed to delete upgrade chance', error);
-      throw new HttpException('Failed to delete upgrade chance', 500);
     }
   }
 

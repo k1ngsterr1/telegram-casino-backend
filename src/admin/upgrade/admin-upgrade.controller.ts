@@ -1,12 +1,4 @@
-import {
-  Controller,
-  Get,
-  Post,
-  Put,
-  Delete,
-  Body,
-  UseGuards,
-} from '@nestjs/common';
+import { Controller, Get, Post, Put, Body, UseGuards } from '@nestjs/common';
 import {
   ApiTags,
   ApiOperation,
@@ -17,7 +9,6 @@ import { AdminUpgradeService } from './admin-upgrade.service';
 import { AdminGuard } from '../../shared/guards/admin.guard';
 import { CreateUpgradeChanceDto } from './dto/create-upgrade-chance.dto';
 import { UpdateUpgradeChanceDto } from './dto/update-upgrade-chance.dto';
-import { DeleteUpgradeChanceDto } from './dto/delete-upgrade-chance.dto';
 import { UpgradeChanceResponseDto } from './dto/upgrade-chance-response.dto';
 
 @ApiTags('Admin - Upgrade')
@@ -70,32 +61,5 @@ export class AdminUpgradeController {
     @Body() dto: UpdateUpgradeChanceDto,
   ): Promise<UpgradeChanceResponseDto> {
     return this.adminUpgradeService.updateUpgradeChance(dto);
-  }
-
-  @Delete('chance')
-  @ApiOperation({ summary: 'Delete upgrade chance multiplier' })
-  @ApiResponse({
-    status: 200,
-    description: 'Upgrade chance deleted successfully',
-  })
-  @ApiResponse({
-    status: 404,
-    description: 'Multiplier not found',
-  })
-  async deleteUpgradeChance(
-    @Body() dto: DeleteUpgradeChanceDto,
-  ): Promise<{ message: string }> {
-    return this.adminUpgradeService.deleteUpgradeChance(dto);
-  }
-
-  @Put('initialize')
-  @ApiOperation({ summary: 'Initialize default upgrade chances' })
-  @ApiResponse({
-    status: 200,
-    description: 'Default upgrade chances initialized',
-  })
-  async initializeDefaultChances(): Promise<{ message: string }> {
-    await this.adminUpgradeService.initializeDefaultChances();
-    return { message: 'Default upgrade chances initialized' };
   }
 }
