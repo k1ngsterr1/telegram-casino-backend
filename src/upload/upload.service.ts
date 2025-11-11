@@ -1,9 +1,7 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { Express } from 'express';
 import { promises as fs } from 'fs';
 import * as path from 'path';
-import * as sharp from 'sharp';
 
 @Injectable()
 export class UploadService {
@@ -33,7 +31,7 @@ export class UploadService {
     }
   }
 
-  async validateImageFile(file: Express.Multer.File): Promise<void> {
+  async validateImageFile(file: any): Promise<void> {
     if (!this.allowedImageTypes.includes(file.mimetype)) {
       throw new BadRequestException(
         `Invalid image type. Allowed types: ${this.allowedImageTypes.join(', ')}`,
@@ -46,7 +44,7 @@ export class UploadService {
     }
   }
 
-  async validateVideoFile(file: Express.Multer.File): Promise<void> {
+  async validateVideoFile(file: any): Promise<void> {
     if (!this.allowedVideoTypes.includes(file.mimetype)) {
       throw new BadRequestException(
         `Invalid video type. Allowed types: ${this.allowedVideoTypes.join(', ')}`,
@@ -59,10 +57,7 @@ export class UploadService {
     }
   }
 
-  async saveVideo(
-    file: Express.Multer.File,
-    filename?: string,
-  ): Promise<string> {
+  async saveVideo(file: any, filename?: string): Promise<string> {
     await this.validateVideoFile(file);
 
     const originalName = filename || file.originalname;
@@ -82,10 +77,7 @@ export class UploadService {
     }
   }
 
-  async processAndSaveImage(
-    file: Express.Multer.File,
-    filename?: string,
-  ): Promise<string> {
+  async processAndSaveImage(file: any, filename?: string): Promise<string> {
     await this.validateImageFile(file);
 
     const originalName = filename || file.originalname;
@@ -95,26 +87,13 @@ export class UploadService {
     const outputPath = path.join(this.uploadPath, finalFilename);
 
     try {
-      // Convert image to JPG with compression and quality optimization
-      await sharp(file.buffer)
-        .jpeg({
-          quality: 85, // Good balance between quality and file size
-          progressive: true, // Progressive JPEG for better web loading
-          mozjpeg: true, // Use mozjpeg encoder for better compression
-        })
-        .resize({
-          width: 1920, // Max width
-          height: 1920, // Max height
-          fit: sharp.fit.inside, // Maintain aspect ratio
-          withoutEnlargement: true, // Don't upscale smaller images
-        })
-        .toFile(outputPath);
-
-      console.log(`Image processed and saved: ${finalFilename}`);
+      // Simple save without sharp processing
+      await fs.writeFile(outputPath, file.buffer);
+      console.log(`Image saved: ${finalFilename}`);
       return finalFilename;
     } catch (error) {
-      console.error('Error processing image:', error);
-      throw new BadRequestException('Failed to process image');
+      console.error('Error saving image:', error);
+      throw new BadRequestException('Failed to save image');
     }
   }
 
