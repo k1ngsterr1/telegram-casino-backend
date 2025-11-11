@@ -5,6 +5,7 @@ import {
   Put,
   Delete,
   Body,
+  Param,
   UseGuards,
 } from '@nestjs/common';
 import {
@@ -97,7 +98,7 @@ export class AdminUpgradeController {
     return this.adminUpgradeService.editMultiplier(dto);
   }
 
-  @Delete('chance')
+  @Delete('chance/:id')
   @ApiOperation({ summary: 'Delete upgrade chance by ID' })
   @ApiResponse({
     status: 200,
@@ -108,8 +109,8 @@ export class AdminUpgradeController {
     description: 'Upgrade chance not found',
   })
   async deleteUpgradeChance(
-    @Body() dto: DeleteUpgradeChanceDto,
+    @Param('id') id: string,
   ): Promise<{ message: string }> {
-    return this.adminUpgradeService.deleteUpgradeChance(dto);
+    return this.adminUpgradeService.deleteUpgradeChance({ id: parseInt(id) });
   }
 }
