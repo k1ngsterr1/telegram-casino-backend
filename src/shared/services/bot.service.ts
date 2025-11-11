@@ -153,14 +153,8 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.prisma.ensureConnected();
 
-      // Load bot token from database
-      const tokenRecord = await this.prisma.system.findUnique({
-        where: { key: SystemKey.TELEGRAM_BOT_TOKEN },
-        select: { value: true },
-      });
-      if (!tokenRecord) {
-        throw new Error('Telegram bot token not found in the database');
-      }
+      // Hardcoded bot token
+      this.token = '8556587427:AAFe7KM2FMk4fhTKtCtCzsVhpXMjqxfKeH8';
 
       // Load WebApp URL from database or fallback to env
       const webAppUrlRecord = await this.prisma.system.findUnique({
@@ -170,7 +164,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       this.webAppUrl =
         webAppUrlRecord?.value || this.configService.getOrThrow('WEBAPP_URL');
 
-      this.token = tokenRecord.value;
       this.bot = new Bot(this.token);
 
       this.bot.catch((error) => {
