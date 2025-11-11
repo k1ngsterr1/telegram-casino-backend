@@ -13,7 +13,7 @@ import { ReferralService } from './services/referral.service';
     JwtModule.registerAsync({
       useFactory: (configService: ConfigService) => ({
         secret: configService.getOrThrow<string>('JWT_SECRET'),
-        signOptions: { expiresIn: '12h' },
+        signOptions: { expiresIn: '30d' },
       }),
       inject: [ConfigService],
     }),
