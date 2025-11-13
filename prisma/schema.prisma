@@ -71,7 +71,6 @@ model InventoryItem {
 
   user  User  @relation("UserInventory", fields: [userId], references: [id])
   prize Prize @relation("InventoryPrizes", fields: [prizeId], references: [id])
-  case  Case?  @relation("CaseInventory", fields: [caseId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -90,6 +89,7 @@ model Prize {
   payouts         Payout[]
   upgradesFrom    Upgrade[]       @relation("UpgradeFromPrize")
   upgradesTo      Upgrade[]       @relation("UpgradeToPrize")
+  betPrizes       Bet[]           @relation("BetPrizes")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,8 +155,6 @@ model Case {
   price   Int
   preview String
   items   CaseItem[] @relation("CaseItems")
-  
-  inventoryItems InventoryItem[] @relation("CaseInventory")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -170,7 +168,7 @@ model Aviator {
   clientSeed  String?
   nonce       Int     @default(0)
 
-  bets Bet[]
+  bets        Bet[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -185,14 +183,20 @@ model Bet {
   id         Int      @id @default(autoincrement())
   aviatorId  Int
   userId     String
-  amount     Int
-  cashedAt   Decimal?
+  amount     Int      // For coin-based bets or initial amount for inventory bets
+  cashedAt   Decimal? // Multiplier when cashed out
+  prizeId    Int?     // Prize given if inventory bet is cashed out
+  isInventoryBet Boolean @default(false) // True if bet was made with inventory item
 
   aviator Aviator @relation(fields: [aviatorId], references: [id])
   user    User    @relation(fields: [userId], references: [id])
+  prize   Prize?  @relation("BetPrizes", fields: [prizeId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([userId, aviatorId])
+  @@index([aviatorId, cashedAt])
 }
 
 model Payment {

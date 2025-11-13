@@ -617,4 +617,280 @@ export class AviatorService implements OnModuleInit {
       throw new HttpException('Failed to cash out bet', 500);
     }
   }
+
+  /**
+   * Deposit inventory item into aviator game
+   * Deletes inventory item and creates bet in one transaction
+   */
+  async depositInventoryItem(
+    userId: string,
+    inventoryItemId: number,
+    aviatorId: number,
+  ) {
+    try {
+      const result = await this.prisma.$transaction(async (tx) => {
+        // 1. Get and validate inventory item
+        const inventoryItem = await tx.inventoryItem.findUnique({
+          where: { id: inventoryItemId },
+          include: {
+            prize: true,
+          },
+        });
+
+        if (!inventoryItem) {
+          throw new HttpException('Inventory item not found', 404);
+        }
+
+        if (inventoryItem.userId !== userId) {
+          throw new HttpException('You do not own this item', 403);
+        }
+
+        // 2. Validate aviator game exists and is active
+        const game = await tx.aviator.findUnique({
+          where: { id: aviatorId },
+        });
+
+        if (!game) {
+          throw new HttpException('Aviator game not found', 404);
+        }
+
+        if (game.status !== 'ACTIVE') {
+          throw new HttpException('Game is not active', 400);
+        }
+
+        // Check if game has already started
+        if (new Date() >= game.startsAt) {
+          throw new HttpException(
+            'Game has already started, cannot place bet',
+            400,
+          );
+        }
+
+        // 3. Check if user already has an inventory bet on this game
+        const existingBet = await tx.bet.findFirst({
+          where: {
+            aviatorId: aviatorId,
+            userId: userId,
+            isInventoryBet: true,
+          },
+        });
+
+        if (existingBet) {
+          throw new HttpException(
+            'You already have an inventory bet on this game',
+            400,
+          );
+        }
+
+        // 4. Delete inventory item
+        await tx.inventoryItem.delete({
+          where: { id: inventoryItemId },
+        });
+
+        // 5. Create bet with inventory flag
+        const bet = await tx.bet.create({
+          data: {
+            aviatorId: aviatorId,
+            userId: userId,
+            amount: inventoryItem.prize.amount,
+            isInventoryBet: true,
+          },
+        });
+
+        return {
+          bet,
+          depositedItem: inventoryItem.prize,
+        };
+      });
+
+      this.logger.log(
+        `User ${userId} deposited inventory item #${inventoryItemId} into aviator game #${aviatorId}`,
+      );
+
+      return {
+        betId: result.bet.id,
+        aviatorId: result.bet.aviatorId,
+        initialAmount: result.bet.amount,
+        depositedItem: {
+          id: result.depositedItem.id,
+          name: result.depositedItem.name,
+          amount: result.depositedItem.amount,
+          url: result.depositedItem.url,
+        },
+        createdAt: result.bet.createdAt,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to deposit inventory item', error);
+      throw new HttpException('Failed to deposit inventory item', 500);
+    }
+  }
+
+  /**
+   * Get possible prize for current amount (fast lookup)
+   * Returns random prize with amount >= currentAmount
+   */
+  async getPossiblePrize(currentAmount: number) {
+    try {
+      // Find all prizes with amount >= currentAmount
+      const eligiblePrizes = await this.prisma.prize.findMany({
+        where: {
+          amount: {
+            gte: currentAmount,
+          },
+        },
+        orderBy: {
+          amount: 'asc',
+        },
+        take: 5, // Take top 5 closest prizes for random selection
+      });
+
+      if (eligiblePrizes.length === 0) {
+        throw new HttpException('No prize available for this amount', 404);
+      }
+
+      // Select random prize from eligible prizes
+      const randomIndex = Math.floor(Math.random() * eligiblePrizes.length);
+      const selectedPrize = eligiblePrizes[randomIndex];
+
+      return {
+        id: selectedPrize.id,
+        name: selectedPrize.name,
+        amount: selectedPrize.amount,
+        url: selectedPrize.url,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to get possible prize', error);
+      throw new HttpException('Failed to get possible prize', 500);
+    }
+  }
+
+  /**
+   * Cash out gift - give user the prize based on current multiplier
+   */
+  async cashoutGift(userId: string, betId: number, currentMultiplier: number) {
+    try {
+      if (currentMultiplier < 1) {
+        throw new HttpException('Invalid multiplier', 400);
+      }
+
+      const result = await this.prisma.$transaction(async (tx) => {
+        // 1. Get and validate bet
+        const bet = await tx.bet.findUnique({
+          where: { id: betId },
+          include: {
+            aviator: true,
+          },
+        });
+
+        if (!bet) {
+          throw new HttpException('Bet not found', 404);
+        }
+
+        if (bet.userId !== userId) {
+          throw new HttpException('Unauthorized to cash out this bet', 403);
+        }
+
+        if (!bet.isInventoryBet) {
+          throw new HttpException('This is not an inventory bet', 400);
+        }
+
+        if (bet.cashedAt !== null) {
+          throw new HttpException('Bet has already been cashed out', 400);
+        }
+
+        if (bet.aviator.status !== 'ACTIVE') {
+          throw new HttpException('Game is no longer active', 400);
+        }
+
+        if (new Date() < bet.aviator.startsAt) {
+          throw new HttpException('Game has not started yet', 400);
+        }
+
+        if (currentMultiplier > Number(bet.aviator.multiplier)) {
+          throw new HttpException(
+            'Cannot cash out after plane has crashed',
+            400,
+          );
+        }
+
+        // 2. Calculate final amount
+        const finalAmount = Math.floor(bet.amount * currentMultiplier);
+
+        // 3. Find prize with amount >= finalAmount
+        const eligiblePrizes = await tx.prize.findMany({
+          where: {
+            amount: {
+              gte: finalAmount,
+            },
+          },
+          orderBy: {
+            amount: 'asc',
+          },
+          take: 10,
+        });
+
+        if (eligiblePrizes.length === 0) {
+          throw new HttpException('No prize available for this amount', 404);
+        }
+
+        // Select random prize
+        const randomIndex = Math.floor(Math.random() * eligiblePrizes.length);
+        const selectedPrize = eligiblePrizes[randomIndex];
+
+        // 4. Update bet with cash out info and prize
+        await tx.bet.update({
+          where: { id: betId },
+          data: {
+            cashedAt: currentMultiplier,
+            prizeId: selectedPrize.id,
+          },
+        });
+
+        // 5. Add prize to user's inventory
+        const newInventoryItem = await tx.inventoryItem.create({
+          data: {
+            userId: userId,
+            prizeId: selectedPrize.id,
+          },
+        });
+
+        return {
+          bet,
+          prize: selectedPrize,
+          finalAmount,
+          newInventoryItemId: newInventoryItem.id,
+        };
+      });
+
+      this.logger.log(
+        `User ${userId} cashed out inventory bet #${betId} at ${currentMultiplier}x for prize #${result.prize.id}`,
+      );
+
+      return {
+        betId: result.bet.id,
+        cashedAt: currentMultiplier,
+        initialAmount: result.bet.amount,
+        finalAmount: result.finalAmount,
+        prize: {
+          id: result.prize.id,
+          name: result.prize.name,
+          amount: result.prize.amount,
+          url: result.prize.url,
+        },
+        newInventoryItemId: result.newInventoryItemId,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to cash out gift', error);
+      throw new HttpException('Failed to cash out gift', 500);
+    }
+  }
 }

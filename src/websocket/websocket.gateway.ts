@@ -312,6 +312,142 @@ export class WebsocketGateway
     }
   }
 
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('aviator:depositInventory')
+  async handleDepositInventory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { inventoryItemId: number; aviatorId: number },
+  ) {
+    try {
+      const userId = client.data.userId;
+
+      if (!data.inventoryItemId || !data.aviatorId) {
+        return {
+          event: 'error',
+          data: {
+            message: 'inventoryItemId and aviatorId are required',
+          },
+        };
+      }
+
+      const result = await this.aviatorService.depositInventoryItem(
+        userId,
+        data.inventoryItemId,
+        data.aviatorId,
+      );
+
+      // Broadcast new inventory bet to all clients
+      this.server.emit('aviator:newInventoryBet', {
+        betId: result.betId,
+        aviatorId: result.aviatorId,
+        userId: userId,
+        username: client.data.username,
+        initialAmount: result.initialAmount,
+        depositedItem: result.depositedItem,
+        timestamp: result.createdAt,
+      });
+
+      return {
+        event: 'aviator:inventoryDeposited',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Error in aviator:depositInventory', error);
+      return {
+        event: 'error',
+        data: {
+          message: error.message || 'Failed to deposit inventory item',
+        },
+      };
+    }
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('aviator:getPossiblePrize')
+  async handleGetPossiblePrize(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { currentAmount: number },
+  ) {
+    try {
+      if (!data.currentAmount) {
+        return {
+          event: 'error',
+          data: {
+            message: 'currentAmount is required',
+          },
+        };
+      }
+
+      const prize = await this.aviatorService.getPossiblePrize(
+        data.currentAmount,
+      );
+
+      return {
+        event: 'aviator:possiblePrize',
+        data: prize,
+      };
+    } catch (error) {
+      this.logger.error('Error in aviator:getPossiblePrize', error);
+      return {
+        event: 'error',
+        data: {
+          message: error.message || 'Failed to get possible prize',
+        },
+      };
+    }
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('aviator:cashOutGift')
+  async handleCashOutGift(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { betId: number; currentMultiplier: number },
+  ) {
+    try {
+      const userId = client.data.userId;
+
+      if (!data.betId || !data.currentMultiplier) {
+        return {
+          event: 'error',
+          data: {
+            message: 'betId and currentMultiplier are required',
+          },
+        };
+      }
+
+      const result = await this.aviatorService.cashoutGift(
+        userId,
+        data.betId,
+        data.currentMultiplier,
+      );
+
+      // Broadcast gift cash out to all clients
+      this.server.emit('aviator:giftCashedOut', {
+        betId: result.betId,
+        userId: userId,
+        username: client.data.username,
+        initialAmount: result.initialAmount,
+        finalAmount: result.finalAmount,
+        multiplier: result.cashedAt,
+        prize: result.prize,
+        timestamp: new Date(),
+      });
+
+      return {
+        event: 'aviator:giftCashed',
+        data: result,
+      };
+    } catch (error) {
+      this.logger.error('Error in aviator:cashOutGift', error);
+      return {
+        event: 'error',
+        data: {
+          message: error.message || 'Failed to cash out gift',
+        },
+      };
+    }
+  }
+
   // Helper method to get active users count
   getActiveUsersCount(): number {
     return this.activeUsers.size;
