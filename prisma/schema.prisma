@@ -50,8 +50,10 @@ model User {
   username     String
   languageCode LanguageCode
   balance      Decimal         @default(0)
+  rating       Int             @default(0) // User's rank position based on balance
   isBanned     Boolean         @default(false)
   role         Role            @default(USER)
+  
 
   inventory    InventoryItem[] @relation("UserInventory")
   bets         Bet[]
@@ -61,6 +63,8 @@ model User {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+
+  @@index([balance])
 }
 
 model InventoryItem {
@@ -71,6 +75,7 @@ model InventoryItem {
 
   user  User  @relation("UserInventory", fields: [userId], references: [id])
   prize Prize @relation("InventoryPrizes", fields: [prizeId], references: [id])
+  case  Case? @relation("InventoryCase", fields: [caseId], references: [id])
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -155,6 +160,7 @@ model Case {
   price   Int
   preview String
   items   CaseItem[] @relation("CaseItems")
+  inventoryItems InventoryItem[] @relation("InventoryCase")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

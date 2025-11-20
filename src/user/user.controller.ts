@@ -62,6 +62,21 @@ export class UserController {
   @ApiResponse({
     status: 200,
     description: 'User profile retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        id: { type: 'string', description: 'User ID' },
+        telegramId: { type: 'string', description: 'Telegram user ID' },
+        role: {
+          type: 'string',
+          enum: ['USER', 'ADMIN'],
+          description: 'User role',
+        },
+        isBanned: { type: 'boolean', description: 'Ban status' },
+        balance: { type: 'number', description: 'User balance' },
+        rating: { type: 'number', description: 'User rank based on balance' },
+      },
+    },
   })
   async getProfile(@User('id') userId: string) {
     return this.userService.getProfile(userId);

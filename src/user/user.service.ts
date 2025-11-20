@@ -56,6 +56,7 @@ export class UserService {
           role: true,
           isBanned: true,
           balance: true,
+          rating: true,
         },
       });
 

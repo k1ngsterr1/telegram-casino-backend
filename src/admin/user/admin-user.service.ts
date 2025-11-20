@@ -27,6 +27,7 @@ export class AdminUserService {
             username: true,
             languageCode: true,
             balance: true,
+            rating: true,
             isBanned: true,
             role: true,
             createdAt: true,
@@ -97,6 +98,7 @@ export class AdminUserService {
           username: true,
           languageCode: true,
           balance: true,
+          rating: true,
           isBanned: true,
           role: true,
           createdAt: true,
@@ -155,6 +157,7 @@ export class AdminUserService {
           id: true,
           telegramId: true,
           username: true,
+          rating: true,
           isBanned: true,
         },
       });
@@ -186,6 +189,7 @@ export class AdminUserService {
           id: true,
           telegramId: true,
           username: true,
+          rating: true,
           isBanned: true,
         },
       });
@@ -222,6 +226,7 @@ export class AdminUserService {
           telegramId: true,
           username: true,
           balance: true,
+          rating: true,
         },
       });
 

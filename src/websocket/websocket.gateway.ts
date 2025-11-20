@@ -16,12 +16,7 @@ import { WsJwtGuard } from './guards/ws-jwt.guard';
 
 @WebSocketGateway({
   cors: {
-    origin: [
-      'https://tma-frontend-production-1702.up.railway.app',
-      'https://miniapp.arcticpay.app',
-      'https://admin-panel.arcticpay.app',
-      'http://localhost:3000',
-    ],
+    origin: ['https://gifty-realm-production.up.railway.app'],
     credentials: true,
   },
   namespace: '/ws',
