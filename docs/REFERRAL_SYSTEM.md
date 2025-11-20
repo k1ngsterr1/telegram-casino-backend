@@ -3,6 +3,7 @@
 ## Overview
 
 The referral system allows users to invite friends and earn commissions on their deposits. The system supports two entry points:
+
 1. **Bot Link**: Users can share a referral link that opens the bot with a referral code
 2. **Web App**: Users can share a web app link with a start parameter containing the referral code
 
@@ -11,11 +12,13 @@ The referral system allows users to invite friends and earn commissions on their
 ### Referral Link Format
 
 **Bot Link:**
+
 ```
 https://t.me/YourBot?start=ref_USER_ID
 ```
 
 **Example:**
+
 ```
 https://t.me/YourBot?start=ref_c354c4c4-f424-469b-8a1b-6eb690112f2d
 ```
@@ -55,6 +58,7 @@ GET /user/referral/link
 **Authorization**: Required (JWT)
 
 **Response:**
+
 ```json
 {
   "referralLink": "https://t.me/YourBot?start=ref_c354c4c4-f424-469b-8a1b-6eb690112f2d",
@@ -71,6 +75,7 @@ GET /user/referral/stats
 **Authorization**: Required (JWT)
 
 **Response:**
+
 ```json
 {
   "totalReferrals": 5,
@@ -90,10 +95,12 @@ GET /user/referral/earnings?page=1&limit=20
 **Authorization**: Required (JWT)
 
 **Query Parameters:**
+
 - `page` (optional): Page number (default: 1)
 - `limit` (optional): Items per page (default: 20)
 
 **Response:**
+
 ```json
 {
   "data": [
@@ -113,22 +120,24 @@ GET /user/referral/earnings?page=1&limit=20
 ## Database Schema
 
 ### User Model
+
 ```prisma
 model User {
   id           String          @id @default(uuid())
   telegramId   String          @unique
-  
+
   // Referral field
   referredBy      String?         // ID of user who referred this user
-  
+
   referralEarnings  ReferralEarning[]   @relation("ReferrerEarnings")
   referralSources   ReferralEarning[]   @relation("ReferredUserPayments")
-  
+
   @@index([referredBy])
 }
 ```
 
 ### ReferralEarning Model
+
 ```prisma
 model ReferralEarning {
   id              Int     @id @default(autoincrement())
@@ -291,8 +300,8 @@ const initData = window.Telegram.WebApp.initData;
 fetch('/user/telegram', {
   method: 'POST',
   body: JSON.stringify({ initData }),
-  headers: { 'Content-Type': 'application/json' }
-})
+  headers: { 'Content-Type': 'application/json' },
+});
 ```
 
 ### Sharing Referral Link
@@ -300,7 +309,7 @@ fetch('/user/telegram', {
 ```javascript
 // Get referral link from backend
 const response = await fetch('/user/referral/link', {
-  headers: { 'Authorization': `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${token}` },
 });
 
 const { referralLink } = await response.json();
@@ -312,6 +321,7 @@ window.Telegram.WebApp.openTelegramLink(referralLink);
 ## Testing
 
 1. **Get referral link** for User A:
+
    ```bash
    curl -X GET http://localhost:3000/user/referral/link \
      -H "Authorization: Bearer USER_A_TOKEN"
@@ -322,6 +332,7 @@ window.Telegram.WebApp.openTelegramLink(referralLink);
    - Web App: Opens with `start_param=ref_USER_A_ID`
 
 3. **Verify referral** was set:
+
    ```sql
    SELECT id, telegramId, referredBy FROM "User" WHERE telegramId = 'USER_B_TELEGRAM_ID';
    ```

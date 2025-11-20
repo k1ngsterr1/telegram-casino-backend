@@ -3,7 +3,8 @@ import { ApiProperty } from '@nestjs/swagger';
 export class ReferralLinkDto {
   @ApiProperty({
     description: 'Referral link for sharing',
-    example: 'https://t.me/YourBot?start=ref_c354c4c4-f424-469b-8a1b-6eb690112f2d',
+    example:
+      'https://t.me/YourBot?start=ref_c354c4c4-f424-469b-8a1b-6eb690112f2d',
   })
   referralLink: string;
 
