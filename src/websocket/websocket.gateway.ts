@@ -40,6 +40,8 @@ export class WebsocketGateway
   private activeUsers: Map<string, string> = new Map(); // userId -> socket ID (only one connection per user)
   private gameLoopInterval: NodeJS.Timeout | null = null; // Interval for game loop
   private currentGameId: number | null = null; // Current game ID being tracked
+  private crashHistory: number[] = []; // История последних крашей (массив множителей)
+  private readonly MAX_CRASH_HISTORY = 20; // Максимум 20 последних крашей
 
   constructor(
     private readonly jwtService: JwtService,
@@ -71,6 +73,9 @@ export class WebsocketGateway
    */
   private async startGameLoop() {
     try {
+      // Загружаем историю крашей из базы данных
+      await this.loadCrashHistory();
+
       // Create or get initial game
       const game = await this.aviatorService.createOrGetAviator();
       this.currentGameId = game.id;
@@ -87,6 +92,35 @@ export class WebsocketGateway
       }, 1000);
     } catch (error) {
       this.logger.error('Failed to start game loop', error);
+    }
+  }
+
+  /**
+   * Load crash history from database (last 20 finished games)
+   */
+  private async loadCrashHistory() {
+    try {
+      const finishedGames = await this.prisma.aviator.findMany({
+        where: {
+          status: 'FINISHED',
+        },
+        orderBy: {
+          createdAt: 'desc',
+        },
+        take: this.MAX_CRASH_HISTORY,
+        select: {
+          multiplier: true,
+        },
+      });
+
+      this.crashHistory = finishedGames.map((game) => Number(game.multiplier));
+
+      this.logger.log(
+        `📊 Loaded ${this.crashHistory.length} crashes from database: [${this.crashHistory.slice(0, 5).join(', ')}...]`,
+      );
+    } catch (error) {
+      this.logger.error('Failed to load crash history', error);
+      this.crashHistory = [];
     }
   }
 
@@ -197,11 +231,20 @@ export class WebsocketGateway
             'FINISHED' as any,
           );
 
+          // Добавляем краш в историю
+          this.addToCrashHistory(crashMultiplier);
+
+          // Отправляем персональные события win/lose каждому игроку
+          await this.sendWinLoseEvents(game);
+
           this.server.emit('aviator:crashed', {
             gameId: game.id,
             multiplier: Number(game.multiplier),
             timestamp: now.toISOString(),
           });
+
+          // Отправляем обновлённую историю крашей всем клиентам
+          this.broadcastCrashHistory();
 
           this.server.emit('aviator:statusChange', {
             gameId: game.id,
@@ -254,6 +297,94 @@ export class WebsocketGateway
     };
 
     this.server.emit('aviator:game', response);
+  }
+
+  /**
+   * Send personalized win/lose events to each player after game crash
+   */
+  private async sendWinLoseEvents(game: any) {
+    const crashMultiplier = Number(game.multiplier);
+
+    // Получаем всех игроков с их ставками
+    for (const bet of game.bets) {
+      const userId = bet.user.id;
+      const socketId = this.activeUsers.get(userId);
+
+      if (!socketId) {
+        this.logger.debug(
+          `User ${userId} (${bet.user.username}) not connected, skipping win/lose event`,
+        );
+        continue;
+      }
+
+      const socket = this.server.sockets.sockets.get(socketId);
+      if (!socket) continue;
+
+      const betAmount = Number(bet.amount);
+      const cashedAt = bet.cashedAt ? Number(bet.cashedAt) : null;
+
+      // Игрок выиграл если сделал cashout
+      if (cashedAt !== null) {
+        const winAmount = Math.floor(betAmount * cashedAt);
+        socket.emit('aviator:win', {
+          betId: bet.id,
+          betAmount: betAmount,
+          cashedAt: cashedAt,
+          winAmount: winAmount,
+          crashMultiplier: crashMultiplier,
+          timestamp: new Date().toISOString(),
+        });
+        this.logger.log(
+          `✅ Sent WIN event to ${bet.user.username}: won ${winAmount} (cashed at ${cashedAt}x)`,
+        );
+      }
+      // Игрок проиграл если не сделал cashout
+      else {
+        socket.emit('aviator:lose', {
+          betId: bet.id,
+          betAmount: betAmount,
+          crashMultiplier: crashMultiplier,
+          timestamp: new Date().toISOString(),
+        });
+        this.logger.log(
+          `❌ Sent LOSE event to ${bet.user.username}: lost ${betAmount} (crashed at ${crashMultiplier}x)`,
+        );
+      }
+    }
+  }
+
+  /**
+   * Add crash multiplier to history
+   */
+  private addToCrashHistory(multiplier: number) {
+    // Добавляем в начало массива (самый новый краш)
+    this.crashHistory.unshift(multiplier);
+
+    // Ограничиваем размер истории
+    if (this.crashHistory.length > this.MAX_CRASH_HISTORY) {
+      this.crashHistory = this.crashHistory.slice(0, this.MAX_CRASH_HISTORY);
+    }
+
+    this.logger.log(
+      `📊 Crash history updated: [${this.crashHistory.slice(0, 5).join(', ')}...]`,
+    );
+  }
+
+  /**
+   * Broadcast crash history to all clients
+   */
+  private broadcastCrashHistory() {
+    this.server.emit('aviator:crashHistory', {
+      history: this.crashHistory,
+      timestamp: new Date().toISOString(),
+    });
+  }
+
+  /**
+   * Get crash history (for new connections)
+   */
+  private getCrashHistory(): number[] {
+    return this.crashHistory;
   }
 
   async handleConnection(client: Socket) {
@@ -334,6 +465,12 @@ export class WebsocketGateway
       client.emit('connected', {
         message: 'Connected successfully',
         activeUsers: this.getActiveUsersCount(),
+      });
+
+      // Отправляем историю крашей новому клиенту
+      client.emit('aviator:crashHistory', {
+        history: this.getCrashHistory(),
+        timestamp: new Date().toISOString(),
       });
 
       // Add catch-all event listener to log all incoming events
