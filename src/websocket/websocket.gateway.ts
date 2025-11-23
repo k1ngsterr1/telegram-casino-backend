@@ -55,6 +55,7 @@ export class WebsocketGateway
   async onModuleInit() {
     this.logger.log('🎮 Starting aviator game loop...');
     await this.startGameLoop();
+    this.logger.log('✅ Aviator game loop initialized successfully');
   }
 
   /**
@@ -87,9 +88,12 @@ export class WebsocketGateway
       this.broadcastGameState(game);
 
       // Check game state every second
+      this.logger.log('⏰ Setting up game loop interval (checking every 1 second)');
       this.gameLoopInterval = setInterval(async () => {
         await this.updateGameState();
       }, 1000);
+      
+      this.logger.log(`✅ Game loop started successfully. Monitoring game #${game.id}`);
     } catch (error) {
       this.logger.error('Failed to start game loop', error);
     }
@@ -129,7 +133,10 @@ export class WebsocketGateway
    */
   private async updateGameState() {
     try {
-      if (!this.currentGameId) return;
+      if (!this.currentGameId) {
+        this.logger.warn('⚠️ updateGameState called but currentGameId is null');
+        return;
+      }
 
       const game = await this.prisma.aviator.findUnique({
         where: { id: this.currentGameId },
@@ -164,6 +171,14 @@ export class WebsocketGateway
 
       const now = new Date();
       const startsAt = new Date(game.startsAt);
+
+      // Debug logging for WAITING state
+      if (game.status === 'WAITING') {
+        const timeUntilStart = startsAt.getTime() - now.getTime();
+        this.logger.debug(
+          `⏳ Game #${game.id} WAITING: ${Math.ceil(timeUntilStart / 1000)}s until start (startsAt: ${startsAt.toISOString()}, now: ${now.toISOString()})`,
+        );
+      }
 
       // WAITING → ACTIVE transition
       if (game.status === 'WAITING' && now >= startsAt) {
