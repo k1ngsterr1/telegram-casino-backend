@@ -402,13 +402,28 @@ export class AviatorService implements OnModuleInit {
     try {
       const { minBet, maxBet } = this.aviatorSettings;
 
-      // Validate bet amount
+      // Validate bet amount is a positive number
+      if (!amount || amount <= 0) {
+        throw new HttpException('Bet amount must be greater than 0', 400);
+      }
+
+      // Validate bet amount range
       if (amount < minBet) {
-        throw new HttpException(`Minimum bet amount is ${minBet}`, 400);
+        throw new HttpException(
+          `Minimum bet amount is ${minBet}. You tried to bet ${amount}`,
+          400,
+        );
       }
       if (amount > maxBet) {
-        throw new HttpException(`Maximum bet amount is ${maxBet}`, 400);
+        throw new HttpException(
+          `Maximum bet amount is ${maxBet}. You tried to bet ${amount}`,
+          400,
+        );
       }
+
+      this.logger.log(
+        `User ${userId} attempting to place bet of ${amount} on aviator #${aviatorId}`,
+      );
 
       // Get the specific aviator game
       const game = await this.prisma.aviator.findUnique({
@@ -450,6 +465,18 @@ export class AviatorService implements OnModuleInit {
           throw new HttpException('User is banned', 403);
         }
 
+        // Check user balance BEFORE attempting bet
+        const currentBalance = Number(user.balance);
+        if (currentBalance < amount) {
+          this.logger.warn(
+            `User ${userId} attempted to bet ${amount} with insufficient balance ${currentBalance}`,
+          );
+          throw new HttpException(
+            `Insufficient balance. You have ${currentBalance}, but need ${amount}`,
+            400,
+          );
+        }
+
         // Check if user already has a bet on this game
         const existingBet = await tx.bet.findFirst({
           where: {
@@ -462,7 +489,7 @@ export class AviatorService implements OnModuleInit {
           throw new HttpException('You already have a bet on this game', 400);
         }
 
-        // Decrement user balance with atomic check
+        // Decrement user balance with atomic check (double protection)
         const updateResult = await tx.user.updateMany({
           where: {
             id: userId,
@@ -477,9 +504,15 @@ export class AviatorService implements OnModuleInit {
           },
         });
 
-        // If no rows were updated, balance was insufficient
+        // If no rows were updated, balance was insufficient (race condition protection)
         if (updateResult.count === 0) {
-          throw new HttpException('Insufficient balance', 400);
+          this.logger.error(
+            `Race condition: User ${userId} balance changed during transaction`,
+          );
+          throw new HttpException(
+            'Insufficient balance. Your balance may have changed.',
+            400,
+          );
         }
 
         // Create bet
