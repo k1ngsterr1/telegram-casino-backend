@@ -1075,6 +1075,65 @@ export class WebsocketGateway
     }
   }
 
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('aviator:getCurrentBets')
+  async handleGetCurrentBets(@ConnectedSocket() client: Socket) {
+    this.logger.log(
+      `🎮 HANDLER START: aviator:getCurrentBets from client ${client.id}, userId: ${client.data.userId}`,
+    );
+    try {
+      this.logger.log(`Client ${client.id} requesting current bets`);
+
+      // Get current game
+      const game = await this.aviatorService.getCurrentGame();
+
+      if (!game) {
+        this.logger.log(`No active game found for client ${client.id}`);
+        return {
+          event: 'aviator:currentBets',
+          data: {
+            bets: [],
+            count: 0,
+            gameId: null,
+            timestamp: new Date().toISOString(),
+          },
+        };
+      }
+
+      // Convert Decimal fields to numbers
+      const bets = game.bets.map((bet) => ({
+        id: bet.id,
+        userId: bet.user.id,
+        username: bet.user.username,
+        amount: Number(bet.amount),
+        cashedAt: bet.cashedAt ? Number(bet.cashedAt) : null,
+        createdAt: bet.createdAt,
+      }));
+
+      this.logger.log(
+        `Sending ${bets.length} current bets to client ${client.id}`,
+      );
+
+      return {
+        event: 'aviator:currentBets',
+        data: {
+          bets,
+          count: bets.length,
+          gameId: game.id,
+          timestamp: new Date().toISOString(),
+        },
+      };
+    } catch (error) {
+      this.logger.error('Error in aviator:getCurrentBets', error);
+      return {
+        event: 'error',
+        data: {
+          message: error.message || 'Failed to get current bets',
+        },
+      };
+    }
+  }
+
   // Helper method to get active users count
   getActiveUsersCount(): number {
     return this.activeUsers.size;
