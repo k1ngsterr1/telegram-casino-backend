@@ -1118,14 +1118,14 @@
 
 "@ton-api/client@^0.4.0":
   version "0.4.0"
-  resolved "https://registry.yarnpkg.com/@ton-api/client/-/client-0.4.0.tgz#5b43fdf9280b3e80a242de67fdcf9ccbccf6c247"
+  resolved "https://registry.npmmirror.com/@ton-api/client/-/client-0.4.0.tgz#5b43fdf9280b3e80a242de67fdcf9ccbccf6c247"
   integrity sha512-k3d6RzNWRDEZpVa9Gig2kHqp74tGvaK/imkjb08RIGxn+wKC7Yv5g98GnXEHf3srRkjtRCG0Nnjx8EsasOMJkw==
   dependencies:
     core-js-pure "^3.38.0"
 
 "@ton/core@^0.62.0":
   version "0.62.0"
-  resolved "https://registry.yarnpkg.com/@ton/core/-/core-0.62.0.tgz#0582b668c134ec565ed3dfeb9f898ad5a3ccdcee"
+  resolved "https://registry.npmmirror.com/@ton/core/-/core-0.62.0.tgz#0582b668c134ec565ed3dfeb9f898ad5a3ccdcee"
   integrity sha512-GCYlzzx11rSESKkiHvNy9tL8zWth+ZtUbvV29WH478FvBp8xTw24AyoigwXWNV+OLCAcnwlGhZpTpxjD3wzCwA==
   dependencies:
     symbol.inspect "1.0.1"
