@@ -44,6 +44,8 @@ export class WebsocketGateway
   private readonly MAX_CRASH_HISTORY = 20; // Максимум 20 последних крашей
   private gameStartTimeout: NodeJS.Timeout | null = null; // Timeout for auto-start
   private gameCrashTimeout: NodeJS.Timeout | null = null; // Timeout for auto-crash
+  private multiplierTickInterval: NodeJS.Timeout | null = null; // Interval for multiplier ticks
+  private currentGameStartTime: number | null = null; // Game start timestamp for multiplier calculation
 
   constructor(
     private readonly jwtService: JwtService,
@@ -209,15 +211,19 @@ export class WebsocketGateway
       // Broadcast game state
       this.broadcastGameState(game);
 
+      // Store game start time for multiplier calculation
+      this.currentGameStartTime = Date.now();
+
       // Calculate crash time based on multiplier
-      // Multiplier grows from 1.0x to crashPoint
-      // For simplicity, assume 1 second per 0.5x increase
       const crashMultiplier = Number(game.multiplier);
-      const crashTimeMs = (crashMultiplier - 1.0) * 2000; // 2 seconds per 1.0x
+      const crashTimeMs = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x (SYNCHRONIZED with frontend)
 
       this.logger.log(
         `💥 Game #${gameId} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s`,
       );
+
+      // Start multiplier tick broadcast (every 50ms for smooth animation)
+      this.startMultiplierTicks(game.id, crashMultiplier, crashTimeMs);
 
       // Schedule crash
       this.gameCrashTimeout = setTimeout(() => {
@@ -225,6 +231,66 @@ export class WebsocketGateway
       }, crashTimeMs);
     } catch (error) {
       this.logger.error(`Error starting game #${gameId}:`, error);
+    }
+  }
+
+  /**
+   * Start broadcasting multiplier ticks every 50ms
+   */
+  private startMultiplierTicks(
+    gameId: number,
+    crashMultiplier: number,
+    crashTimeMs: number,
+  ) {
+    // Clear any existing interval
+    if (this.multiplierTickInterval) {
+      clearInterval(this.multiplierTickInterval);
+    }
+
+    const startTime = this.currentGameStartTime;
+    if (!startTime) {
+      this.logger.error('Game start time not set');
+      return;
+    }
+
+    // Broadcast current multiplier every 50ms
+    this.multiplierTickInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+
+      // Check if game should crash
+      if (elapsed >= crashTimeMs) {
+        // Stop ticks
+        if (this.multiplierTickInterval) {
+          clearInterval(this.multiplierTickInterval);
+          this.multiplierTickInterval = null;
+        }
+        return;
+      }
+
+      // Calculate current multiplier
+      const progress = elapsed / crashTimeMs;
+      const currentMultiplier = 1.0 + (crashMultiplier - 1.0) * progress;
+
+      // Broadcast tick to all clients
+      this.server.emit('aviator:multiplierTick', {
+        gameId,
+        currentMultiplier: Number(currentMultiplier.toFixed(2)),
+        elapsed,
+        timestamp: Date.now(),
+      });
+    }, 50); // 50ms = 20 ticks per second
+
+    this.logger.log(`🎯 Started multiplier ticks for game #${gameId}`);
+  }
+
+  /**
+   * Stop multiplier ticks
+   */
+  private stopMultiplierTicks() {
+    if (this.multiplierTickInterval) {
+      clearInterval(this.multiplierTickInterval);
+      this.multiplierTickInterval = null;
+      this.logger.log('⏹️ Stopped multiplier ticks');
     }
   }
 
@@ -264,6 +330,9 @@ export class WebsocketGateway
     try {
       this.logger.log(`💥 Crashing game #${gameId}`);
 
+      // Stop multiplier ticks
+      this.stopMultiplierTicks();
+
       // Get game with bets before updating
       const game = await this.prisma.aviator.findUnique({
         where: { id: gameId },
@@ -302,6 +371,9 @@ export class WebsocketGateway
       await this.aviatorService.updateGameStatus(gameId, 'FINISHED' as any);
 
       const crashMultiplier = Number(game.multiplier);
+
+      // Clear game start time
+      this.currentGameStartTime = null;
 
       // Add to crash history
       this.addToCrashHistory(crashMultiplier);
@@ -715,6 +787,23 @@ export class WebsocketGateway
       data: {
         timestamp: new Date().toISOString(),
         activeUsers: this.getActiveUsersCount(),
+      },
+    };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('getServerTime')
+  handleGetServerTime(@ConnectedSocket() client: Socket): {
+    event: string;
+    data: any;
+  } {
+    return {
+      event: 'serverTime',
+      data: {
+        serverTime: Date.now(),
+        serverTimestamp: new Date().toISOString(),
+        multiplierFormula: 5000, // ms per 1.0x
+        tickRate: 50, // ms between ticks
       },
     };
   }

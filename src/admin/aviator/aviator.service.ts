@@ -702,6 +702,7 @@ export class AviatorService implements OnModuleInit {
   /**
    * Cash out a bet at the current multiplier
    * Validates bet exists, hasn't been cashed out, and game is still active
+   * NOW WITH SERVER-SIDE MULTIPLIER VALIDATION
    */
   async cashOut(userId: string, betId: number, currentMultiplier: number) {
     try {
@@ -757,8 +758,42 @@ export class AviatorService implements OnModuleInit {
           throw new HttpException('Game has not started yet', 400);
         }
 
+        // SERVER-SIDE MULTIPLIER VALIDATION
+        // Calculate what the multiplier SHOULD be on the server
+        const now = Date.now();
+        const startTime = new Date(bet.aviator.startsAt).getTime();
+        const elapsed = now - startTime;
+        const crashPoint = Number(bet.aviator.multiplier);
+        const crashTimeMs = (crashPoint - 1.0) * 5000; // Same formula as frontend
+
+        // Check if game already crashed
+        if (elapsed >= crashTimeMs) {
+          this.logger.warn(
+            `User ${userId} tried to cashout after crash. Elapsed: ${elapsed}ms, crashTime: ${crashTimeMs}ms`,
+          );
+          throw new HttpException(
+            'Cannot cash out after plane has crashed',
+            400,
+          );
+        }
+
+        // Calculate server's current multiplier
+        const progress = elapsed / crashTimeMs;
+        const serverMultiplier = 1.0 + (crashPoint - 1.0) * progress;
+
+        // Check if client multiplier is reasonable (allow 10% deviation for network delay)
+        const deviation = Math.abs(currentMultiplier - serverMultiplier) / serverMultiplier;
+        
+        if (deviation > 0.15) {
+          this.logger.warn(
+            `User ${userId} multiplier deviation: client=${currentMultiplier.toFixed(2)}, server=${serverMultiplier.toFixed(2)}, deviation=${(deviation * 100).toFixed(1)}%`,
+          );
+          // Use server multiplier instead
+          currentMultiplier = Number(serverMultiplier.toFixed(2));
+        }
+
         // Check if current multiplier exceeds game's final multiplier
-        if (currentMultiplier > bet.aviator.multiplier.toNumber()) {
+        if (currentMultiplier > crashPoint) {
           throw new HttpException(
             'Cannot cash out after plane has crashed',
             400,
