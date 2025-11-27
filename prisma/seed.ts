@@ -255,37 +255,37 @@ async function main() {
 
   console.log('\nSeeding prizes...');
 
-  // Create prizes for cases with Lottie animations from Fragment
+  // Create prizes for cases with PNG images from Telegram CDN
   const prizes = [
     {
       name: '100 Coins',
       amount: 100,
-      url: 'https://nft.fragment.com/gift/CandyCane-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Candy%20Cane/png/Original.png',
     },
     {
       name: '250 Coins',
       amount: 250,
-      url: 'https://nft.fragment.com/gift/BerryBox-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Berry%20Box/png/Original.png',
     },
     {
       name: '500 Coins',
       amount: 500,
-      url: 'https://nft.fragment.com/gift/IceCream-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Ice%20Cream/png/Original.png',
     },
     {
       name: '1000 Coins',
       amount: 1000,
-      url: 'https://nft.fragment.com/gift/HomemadeCake-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Homemade%20Cake/png/Original.png',
     },
     {
       name: '2500 Coins',
       amount: 2500,
-      url: 'https://nft.fragment.com/gift/PreciousPeach-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Precious%20Peach/png/Original.png',
     },
     {
       name: '5000 Coins',
       amount: 5000,
-      url: 'https://nft.fragment.com/gift/SakuraFlower-505.lottie.json',
+      url: 'https://cdn.changes.tg/gifts/models/Sakura%20Flower/png/Original.png',
     },
   ];
 
@@ -309,25 +309,25 @@ async function main() {
 
   console.log('\nSeeding cases...');
 
-  // Create cases with Lottie previews from Fragment
+  // Create cases with PNG previews from Telegram CDN
   const cases = [
     {
       id: 1,
       name: 'Bronze Case',
       price: 100,
-      preview: 'https://nft.fragment.com/gift/LootBag-505.lottie.json',
+      preview: 'https://cdn.changes.tg/gifts/models/Loot%20Bag/png/Original.png',
     },
     {
       id: 2,
       name: 'Silver Case',
       price: 250,
-      preview: 'https://nft.fragment.com/gift/JoyfulBundle-505.lottie.json',
+      preview: 'https://cdn.changes.tg/gifts/models/Joyful%20Bundle/png/Original.png',
     },
     {
       id: 3,
       name: 'Gold Case',
       price: 500,
-      preview: 'https://nft.fragment.com/gift/HeroicHelmet-505.lottie.json',
+      preview: 'https://cdn.changes.tg/gifts/models/Heroic%20Helmet/png/Original.png',
     },
   ];
 

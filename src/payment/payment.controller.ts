@@ -28,7 +28,7 @@ export class PaymentController {
   constructor(private readonly paymentService: PaymentService) {}
 
   @Post('stars')
-  @UseGuards(UserGuard)
+  @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({ summary: 'Create Telegram Stars payment invoice' })
   @ApiResponse({

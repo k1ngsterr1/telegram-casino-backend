@@ -14,6 +14,7 @@ import {
   ApiBearerAuth,
   ApiParam,
 } from '@nestjs/swagger';
+import { AuthGuard } from '@nestjs/passport';
 import { UpgradeService } from './upgrade.service';
 import { UserGuard } from '../shared/guards/user.guard';
 import { User } from '../shared/decorator/user.decorator';
@@ -68,7 +69,7 @@ export class UpgradeController {п
   }
 
   @Get('options')
-  @UseGuards(UserGuard)
+  @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get upgrade options for an inventory item' })
   @ApiResponse({
@@ -84,7 +85,7 @@ export class UpgradeController {п
   }
 
   @Post('execute')
-  @UseGuards(UserGuard)
+  @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Execute an upgrade attempt' })
   @ApiResponse({
@@ -104,7 +105,7 @@ export class UpgradeController {п
   }
 
   @Get('history')
-  @UseGuards(UserGuard)
+  @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get user upgrade history' })
   @ApiResponse({
@@ -120,7 +121,7 @@ export class UpgradeController {п
   }
 
   @Get('stats')
-  @UseGuards(UserGuard)
+  @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth()
   @ApiOperation({ summary: 'Get user upgrade statistics' })
   @ApiResponse({
