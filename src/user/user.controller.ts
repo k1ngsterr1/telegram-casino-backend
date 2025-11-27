@@ -180,4 +180,59 @@ export class UserController {
       limit ? Number(limit) : 20,
     );
   }
+
+  @Get('inventory')
+  @UseGuards(AuthGuard('jwt'))
+  @ApiBearerAuth('JWT')
+  @ApiOperation({ summary: 'Get user inventory' })
+  @ApiQuery({ name: 'page', required: false, type: Number, example: 1 })
+  @ApiQuery({ name: 'limit', required: false, type: Number, example: 50 })
+  @ApiResponse({
+    status: 200,
+    description: 'User inventory retrieved successfully',
+    schema: {
+      type: 'object',
+      properties: {
+        data: {
+          type: 'array',
+          items: {
+            type: 'object',
+            properties: {
+              id: { type: 'number' },
+              prize: {
+                type: 'object',
+                properties: {
+                  id: { type: 'number' },
+                  name: { type: 'string' },
+                  amount: { type: 'number' },
+                  url: { type: 'string' },
+                },
+              },
+              case: {
+                type: 'object',
+                nullable: true,
+                properties: {
+                  id: { type: 'number' },
+                  name: { type: 'string' },
+                },
+              },
+              createdAt: { type: 'string', format: 'date-time' },
+            },
+          },
+        },
+        total: { type: 'number' },
+      },
+    },
+  })
+  async getUserInventory(
+    @User('id') userId: string,
+    @Query('page') page?: number,
+    @Query('limit') limit?: number,
+  ) {
+    return this.userService.getUserInventory(
+      userId,
+      page ? Number(page) : 1,
+      limit ? Number(limit) : 50,
+    );
+  }
 }

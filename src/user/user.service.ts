@@ -340,4 +340,86 @@ export class UserService {
       throw new HttpException('Failed to get referral earnings', 500);
     }
   }
+
+  /**
+   * Get user inventory with prizes
+   */
+  async getUserInventory(
+    userId: string,
+    page: number = 1,
+    limit: number = 50,
+  ): Promise<{
+    data: Array<{
+      id: number;
+      prize: {
+        id: number;
+        name: string;
+        amount: number;
+        url: string;
+      };
+      case: {
+        id: number;
+        name: string;
+      } | null;
+      createdAt: Date;
+    }>;
+    total: number;
+  }> {
+    try {
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { id: true },
+      });
+
+      if (!user) {
+        throw new HttpException('User not found', 404);
+      }
+
+      const skip = (page - 1) * limit;
+
+      const [items, total] = await Promise.all([
+        this.prisma.inventoryItem.findMany({
+          where: { userId },
+          include: {
+            prize: {
+              select: {
+                id: true,
+                name: true,
+                amount: true,
+                url: true,
+              },
+            },
+            case: {
+              select: {
+                id: true,
+                name: true,
+              },
+            },
+          },
+          orderBy: { createdAt: 'desc' },
+          skip,
+          take: limit,
+        }),
+        this.prisma.inventoryItem.count({
+          where: { userId },
+        }),
+      ]);
+
+      return {
+        data: items.map((item) => ({
+          id: item.id,
+          prize: item.prize,
+          case: item.case,
+          createdAt: item.createdAt,
+        })),
+        total,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to get user inventory: ', error);
+      throw new HttpException('Failed to get user inventory', 500);
+    }
+  }
 }
