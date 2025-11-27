@@ -30,8 +30,17 @@ export class AviatorService implements OnModuleInit {
     instantCrashP: 0.01,
   };
   private serverSeed: string = '';
+  private websocketGateway: any = null; // Reference to WebSocket gateway for broadcasting
 
   constructor(private readonly prisma: PrismaService) {}
+
+  /**
+   * Set WebSocket gateway reference (called by gateway on init)
+   */
+  setWebSocketGateway(gateway: any) {
+    this.websocketGateway = gateway;
+    this.logger.log('✅ WebSocket gateway reference set');
+  }
 
   async onModuleInit() {
     await this.loadAviatorSettings();
@@ -388,14 +397,8 @@ export class AviatorService implements OnModuleInit {
         `Created new aviator game #${newGame.id} with multiplier ${multiplier}x (nonce: ${nonce}, clientSeed: ${clientSeed}), starts at ${startsAt.toISOString()}`,
       );
 
-      // Schedule auto-start
-      setTimeout(() => {
-        console.log(`⏰ Auto-starting game #${newGame.id}`);
-        // fire-and-forget
-        this.startGame(newGame.id).catch((err) =>
-          this.logger.error('Failed to auto-start game', err),
-        );
-      }, 10_000);
+      // NOTE: Auto-start scheduling is handled by WebSocket gateway
+      // to ensure proper event broadcasting to all connected clients
 
       return newGame;
     } catch (error) {
@@ -406,10 +409,13 @@ export class AviatorService implements OnModuleInit {
 
   /**
    * Start a WAITING game (set to ACTIVE) and schedule crash
+   * NOTE: This only updates the database. WebSocket events should be emitted by the gateway.
    */
   async startGame(gameId: number) {
     try {
-      this.logger.log(`🚀 Starting game #${gameId}`);
+      this.logger.log(`🚀 [Service] Starting game #${gameId}`);
+
+      // Update game status to ACTIVE
       const game = await this.prisma.aviator.update({
         where: { id: gameId },
         data: { status: AviatorStatus.ACTIVE, startsAt: new Date() },
@@ -420,28 +426,30 @@ export class AviatorService implements OnModuleInit {
               amount: true,
               cashedAt: true,
               createdAt: true,
-              user: { select: { id: true, username: true } },
+              user: {
+                select: {
+                  id: true,
+                  username: true,
+                  telegramId: true,
+                },
+              },
             },
           },
         },
       });
 
-      // Schedule crash after a reasonable time window (use 25s as default)
+      // Calculate crash delay for logging
       const crashDelay = this.calculateCrashDelay(Number(game.multiplier));
       this.logger.log(
-        `✅ Game #${game.id} started; scheduling crash in ${crashDelay}ms`,
+        `✅ [Service] Game #${game.id} started successfully. Will crash at ${game.multiplier}x in ${Math.ceil(crashDelay / 1000)}s`,
       );
 
-      setTimeout(() => {
-        this.logger.log(`💥 Crashing game #${gameId}`);
-        this.crashGame(gameId).catch((err) =>
-          this.logger.error('Failed to crash game', err),
-        );
-      }, crashDelay);
+      // NOTE: Crash scheduling is handled by WebSocket gateway
+      // to ensure proper event broadcasting to all connected clients
 
       return game;
     } catch (error) {
-      this.logger.error('Failed to start game', error);
+      this.logger.error('[Service] Failed to start game', error);
       throw error;
     }
   }
@@ -466,14 +474,15 @@ export class AviatorService implements OnModuleInit {
   }
 
   /**
-   * Simple heuristic to convert multiplier into crash delay (ms).
-   * Keeps games within a reasonable time window.
+   * Calculate crash delay based on multiplier
+   * SYNCHRONIZED WITH FRONTEND AND WEBSOCKET GATEWAY!
+   * Formula: (multiplier - 1.0) * 5000ms
+   * Example: 2.00x = 5000ms, 5.00x = 20000ms, 10.00x = 45000ms
    */
   private calculateCrashDelay(multiplier: number): number {
-    // base flight time: 8s, add up to 20s depending on multiplier (capped)
-    const base = 8_000;
-    const extra = Math.min(20_000, Math.round((multiplier / 10) * 3_000));
-    return base + extra;
+    // CRITICAL: This MUST match the frontend formula
+    // Frontend uses: const crashTimeMs = (crashMultiplier - 1.0) * 5000;
+    return Math.round((multiplier - 1.0) * 5000);
   }
 
   /**
@@ -702,6 +711,7 @@ export class AviatorService implements OnModuleInit {
   /**
    * Cash out a bet at the current multiplier
    * Validates bet exists, hasn't been cashed out, and game is still active
+   * NOW WITH SERVER-SIDE MULTIPLIER VALIDATION
    */
   async cashOut(userId: string, betId: number, currentMultiplier: number) {
     try {
@@ -757,8 +767,43 @@ export class AviatorService implements OnModuleInit {
           throw new HttpException('Game has not started yet', 400);
         }
 
+        // SERVER-SIDE MULTIPLIER VALIDATION
+        // Calculate what the multiplier SHOULD be on the server
+        const now = Date.now();
+        const startTime = new Date(bet.aviator.startsAt).getTime();
+        const elapsed = now - startTime;
+        const crashPoint = Number(bet.aviator.multiplier);
+        const crashTimeMs = (crashPoint - 1.0) * 5000; // Same formula as frontend
+
+        // Check if game already crashed
+        if (elapsed >= crashTimeMs) {
+          this.logger.warn(
+            `User ${userId} tried to cashout after crash. Elapsed: ${elapsed}ms, crashTime: ${crashTimeMs}ms`,
+          );
+          throw new HttpException(
+            'Cannot cash out after plane has crashed',
+            400,
+          );
+        }
+
+        // Calculate server's current multiplier
+        const progress = elapsed / crashTimeMs;
+        const serverMultiplier = 1.0 + (crashPoint - 1.0) * progress;
+
+        // Check if client multiplier is reasonable (allow 10% deviation for network delay)
+        const deviation =
+          Math.abs(currentMultiplier - serverMultiplier) / serverMultiplier;
+
+        if (deviation > 0.15) {
+          this.logger.warn(
+            `User ${userId} multiplier deviation: client=${currentMultiplier.toFixed(2)}, server=${serverMultiplier.toFixed(2)}, deviation=${(deviation * 100).toFixed(1)}%`,
+          );
+          // Use server multiplier instead
+          currentMultiplier = Number(serverMultiplier.toFixed(2));
+        }
+
         // Check if current multiplier exceeds game's final multiplier
-        if (currentMultiplier > bet.aviator.multiplier.toNumber()) {
+        if (currentMultiplier > crashPoint) {
           throw new HttpException(
             'Cannot cash out after plane has crashed',
             400,
@@ -1130,6 +1175,96 @@ export class AviatorService implements OnModuleInit {
     } catch (error) {
       this.logger.error('Failed to get game history', error);
       throw new HttpException('Failed to get game history', 500);
+    }
+  }
+
+  /**
+   * Auto-start WAITING games that should have started - runs every 5 seconds
+   * CRITICAL: This ensures games always start even if setTimeout fails
+   */
+  @Cron('*/5 * * * * *') // Every 5 seconds
+  async autoStartWaitingGames() {
+    try {
+      const now = new Date();
+
+      // Find WAITING games that should have started (startsAt is in the past)
+      const stalledGames = await this.prisma.aviator.findMany({
+        where: {
+          status: AviatorStatus.WAITING,
+          startsAt: {
+            lt: now, // startsAt is before now
+          },
+        },
+        include: {
+          bets: {
+            select: {
+              id: true,
+              amount: true,
+              cashedAt: true,
+              createdAt: true,
+              user: {
+                select: { id: true, username: true, telegramId: true },
+              },
+            },
+          },
+        },
+      });
+
+      for (const game of stalledGames) {
+        const elapsed = now.getTime() - new Date(game.startsAt).getTime();
+
+        // If game is less than 15 seconds overdue, start it
+        if (elapsed < 15_000) {
+          this.logger.warn(
+            `⚠️ [CRON] Game #${game.id} should have started ${Math.floor(elapsed / 1000)}s ago. Starting NOW!`,
+          );
+
+          // Start the game (updates database)
+          const startedGame = await this.startGame(game.id);
+
+          // Broadcast to all clients if gateway is available
+          if (this.websocketGateway && this.websocketGateway.server) {
+            // Emit status change
+            this.websocketGateway.server.emit('aviator:statusChange', {
+              gameId: startedGame.id,
+              status: 'ACTIVE',
+              timestamp: new Date().toISOString(),
+            });
+
+            // Broadcast game state
+            const response = {
+              ...startedGame,
+              multiplier: Number(startedGame.multiplier),
+              bets: (startedGame.bets || []).map((bet) => ({
+                ...bet,
+                amount: Number(bet.amount),
+                cashedAt: bet.cashedAt ? Number(bet.cashedAt) : null,
+              })),
+            };
+            this.websocketGateway.server.emit('aviator:game', response);
+
+            this.logger.log(
+              `✅ [CRON] Broadcasted game #${startedGame.id} start to all clients`,
+            );
+
+            // Notify gateway to schedule crash
+            if (this.websocketGateway.handleGameStartedByCron) {
+              this.websocketGateway.handleGameStartedByCron(startedGame);
+            }
+          }
+        } else {
+          // If game is more than 15 seconds overdue, it's too stale - mark as FINISHED
+          this.logger.warn(
+            `⚠️ [CRON] Game #${game.id} is ${Math.floor(elapsed / 1000)}s overdue. Marking as FINISHED.`,
+          );
+          await this.prisma.aviator.update({
+            where: { id: game.id },
+            data: { status: AviatorStatus.FINISHED },
+          });
+        }
+      }
+    } catch (error) {
+      this.logger.error('[CRON] Failed to auto-start waiting games', error);
     }
   }
 

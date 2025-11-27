@@ -44,6 +44,8 @@ export class WebsocketGateway
   private readonly MAX_CRASH_HISTORY = 20; // Максимум 20 последних крашей
   private gameStartTimeout: NodeJS.Timeout | null = null; // Timeout for auto-start
   private gameCrashTimeout: NodeJS.Timeout | null = null; // Timeout for auto-crash
+  private multiplierTickInterval: NodeJS.Timeout | null = null; // Interval for multiplier ticks
+  private currentGameStartTime: number | null = null; // Game start timestamp for multiplier calculation
 
   constructor(
     private readonly jwtService: JwtService,
@@ -56,6 +58,10 @@ export class WebsocketGateway
    */
   async onModuleInit() {
     this.logger.log('🎮 Starting aviator game loop...');
+
+    // Set gateway reference in aviator service for cron jobs
+    this.aviatorService.setWebSocketGateway(this);
+
     await this.startGameLoop();
     this.logger.log('✅ Aviator game loop initialized successfully');
   }
@@ -163,41 +169,64 @@ export class WebsocketGateway
   }
 
   /**
+   * Handler for when cron job starts a game
+   * Schedules crash and multiplier ticks
+   */
+  handleGameStartedByCron(game: any) {
+    try {
+      this.logger.log(`🎮 [Gateway] Handling cron-started game #${game.id}`);
+
+      // Store game start time for multiplier calculation
+      this.currentGameStartTime = Date.now();
+      this.currentGameId = game.id;
+
+      // Calculate crash time based on multiplier
+      const crashMultiplier = Number(game.multiplier);
+      const crashTimeMs = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x (SYNCHRONIZED with frontend)
+
+      this.logger.log(
+        `💥 [Gateway] Game #${game.id} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s`,
+      );
+
+      // Start multiplier tick broadcast (every 50ms for smooth animation)
+      this.startMultiplierTicks(game.id, crashMultiplier, crashTimeMs);
+
+      // Schedule crash
+      this.gameCrashTimeout = setTimeout(() => {
+        this.logger.log(
+          `⏰ [Gateway] ⚡ CRASH TIMEOUT TRIGGERED (cron-started) for game #${game.id} after ${crashTimeMs}ms`,
+        );
+        this.crashGame(game.id).catch((err) =>
+          this.logger.error('[Gateway] Failed to crash cron-started game', err),
+        );
+      }, crashTimeMs);
+
+      this.logger.log(
+        `⏰ [Gateway] Crash scheduled in ${crashTimeMs}ms (${Math.ceil(crashTimeMs / 1000)}s) at ${crashMultiplier}x`,
+      );
+    } catch (error) {
+      this.logger.error(`[Gateway] Error handling cron-started game:`, error);
+    }
+  }
+
+  /**
    * Start the game - transition from WAITING to ACTIVE
    */
   private async startGame(gameId: number) {
     try {
-      this.logger.log(`🚀 Starting game #${gameId}`);
+      this.logger.log(`🚀 [Gateway] ===== STARTING GAME #${gameId} =====`);
 
-      // Update game status to ACTIVE
-      await this.aviatorService.updateGameStatus(gameId, 'ACTIVE' as any);
-
-      // Get game with bets
-      const game = await this.prisma.aviator.findUnique({
-        where: { id: gameId },
-        include: {
-          bets: {
-            select: {
-              id: true,
-              amount: true,
-              cashedAt: true,
-              createdAt: true,
-              user: {
-                select: {
-                  id: true,
-                  username: true,
-                  telegramId: true,
-                },
-              },
-            },
-          },
-        },
-      });
+      // Update game status to ACTIVE using service
+      const game = await this.aviatorService.startGame(gameId);
 
       if (!game) {
-        this.logger.error(`Game #${gameId} not found after starting`);
+        this.logger.error(`[Gateway] ❌ Game #${gameId} not found after start`);
         return;
       }
+
+      this.logger.log(
+        `✅ [Gateway] Game #${gameId} status updated to ACTIVE (${game.bets.length} bets placed)`,
+      );
 
       // Emit status change
       this.server.emit('aviator:statusChange', {
@@ -206,25 +235,108 @@ export class WebsocketGateway
         timestamp: new Date().toISOString(),
       });
 
+      this.logger.log(
+        `📡 [Gateway] Broadcasted aviator:statusChange (ACTIVE) event`,
+      );
+
       // Broadcast game state
       this.broadcastGameState(game);
 
+      // Store game start time for multiplier calculation
+      this.currentGameStartTime = Date.now();
+
       // Calculate crash time based on multiplier
-      // Multiplier grows from 1.0x to crashPoint
-      // For simplicity, assume 1 second per 0.5x increase
       const crashMultiplier = Number(game.multiplier);
-      const crashTimeMs = (crashMultiplier - 1.0) * 2000; // 2 seconds per 1.0x
+      const crashTimeMs = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x (SYNCHRONIZED with frontend)
 
       this.logger.log(
-        `💥 Game #${gameId} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s`,
+        `💥 [Gateway] Game #${gameId} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s (${crashTimeMs}ms)`,
       );
+
+      // Start multiplier tick broadcast (every 50ms for smooth animation)
+      this.startMultiplierTicks(game.id, crashMultiplier, crashTimeMs);
 
       // Schedule crash
       this.gameCrashTimeout = setTimeout(() => {
-        this.crashGame(gameId);
+        this.logger.log(
+          `⏰ [Gateway] ⚡ CRASH TIMEOUT TRIGGERED for game #${gameId} after ${crashTimeMs}ms`,
+        );
+        this.crashGame(gameId).catch((err) =>
+          this.logger.error(
+            `[Gateway] ❌ Failed to crash game #${gameId}:`,
+            err,
+          ),
+        );
       }, crashTimeMs);
+
+      this.logger.log(
+        `✅ [Gateway] ===== GAME #${gameId} STARTED SUCCESSFULLY =====`,
+      );
+      this.logger.log(
+        `⏰ [Gateway] Crash scheduled in ${crashTimeMs}ms (${Math.ceil(crashTimeMs / 1000)}s) at ${crashMultiplier}x`,
+      );
     } catch (error) {
-      this.logger.error(`Error starting game #${gameId}:`, error);
+      this.logger.error(`[Gateway] ❌ Error starting game #${gameId}:`, error);
+    }
+  }
+
+  /**
+   * Start broadcasting multiplier ticks every 50ms
+   */
+  private startMultiplierTicks(
+    gameId: number,
+    crashMultiplier: number,
+    crashTimeMs: number,
+  ) {
+    // Clear any existing interval
+    if (this.multiplierTickInterval) {
+      clearInterval(this.multiplierTickInterval);
+    }
+
+    const startTime = this.currentGameStartTime;
+    if (!startTime) {
+      this.logger.error('Game start time not set');
+      return;
+    }
+
+    // Broadcast current multiplier every 50ms
+    this.multiplierTickInterval = setInterval(() => {
+      const elapsed = Date.now() - startTime;
+
+      // Check if game should crash
+      if (elapsed >= crashTimeMs) {
+        // Stop ticks
+        if (this.multiplierTickInterval) {
+          clearInterval(this.multiplierTickInterval);
+          this.multiplierTickInterval = null;
+        }
+        return;
+      }
+
+      // Calculate current multiplier
+      const progress = elapsed / crashTimeMs;
+      const currentMultiplier = 1.0 + (crashMultiplier - 1.0) * progress;
+
+      // Broadcast tick to all clients
+      this.server.emit('aviator:multiplierTick', {
+        gameId,
+        currentMultiplier: Number(currentMultiplier.toFixed(2)),
+        elapsed,
+        timestamp: Date.now(),
+      });
+    }, 50); // 50ms = 20 ticks per second
+
+    this.logger.log(`🎯 Started multiplier ticks for game #${gameId}`);
+  }
+
+  /**
+   * Stop multiplier ticks
+   */
+  private stopMultiplierTicks() {
+    if (this.multiplierTickInterval) {
+      clearInterval(this.multiplierTickInterval);
+      this.multiplierTickInterval = null;
+      this.logger.log('⏹️ Stopped multiplier ticks');
     }
   }
 
@@ -262,7 +374,10 @@ export class WebsocketGateway
    */
   private async crashGame(gameId: number) {
     try {
-      this.logger.log(`💥 Crashing game #${gameId}`);
+      this.logger.log(`💥 [Gateway] ===== CRASHING GAME #${gameId} =====`);
+
+      // Stop multiplier ticks
+      this.stopMultiplierTicks();
 
       // Get game with bets before updating
       const game = await this.prisma.aviator.findUnique({
@@ -287,13 +402,13 @@ export class WebsocketGateway
       });
 
       if (!game) {
-        this.logger.error(`Game #${gameId} not found for crash`);
+        this.logger.error(`[Gateway] ❌ Game #${gameId} not found for crash`);
         return;
       }
 
       if (game.status !== 'ACTIVE') {
         this.logger.warn(
-          `Game #${gameId} is not ACTIVE (status: ${game.status}), skipping crash`,
+          `[Gateway] ⚠️ Game #${gameId} is not ACTIVE (status: ${game.status}), skipping crash`,
         );
         return;
       }
@@ -303,15 +418,38 @@ export class WebsocketGateway
 
       const crashMultiplier = Number(game.multiplier);
 
+      this.logger.log(
+        `💥 [Gateway] Game #${gameId} crashed at ${crashMultiplier}x (${game.bets.length} bets)`,
+      );
+
+      // Clear game start time
+      this.currentGameStartTime = null;
+
       // Add to crash history
       this.addToCrashHistory(crashMultiplier);
 
       // Emit crashed event
-      this.server.emit('aviator:crashed', {
+      const crashEvent = {
         gameId: game.id,
         multiplier: crashMultiplier,
         timestamp: new Date().toISOString(),
-      });
+      };
+
+      this.logger.log(
+        `📡 [Gateway] EMITTING aviator:crashed event: ${JSON.stringify(crashEvent)}`,
+      );
+
+      this.server.emit('aviator:crashed', crashEvent);
+
+      // Get connected clients count safely
+      const connectedClientsCount =
+        this.server.sockets?.sockets?.size ||
+        this.activeUsers.size ||
+        'unknown';
+
+      this.logger.log(
+        `✅ [Gateway] aviator:crashed event SENT to ${connectedClientsCount} connected clients`,
+      );
 
       // Process game results (send win/lose events)
       await this.processGameResults(game);
@@ -327,32 +465,108 @@ export class WebsocketGateway
       });
 
       this.logger.log(
-        `✅ Game #${gameId} crashed at ${crashMultiplier}x. Creating new game in 3s...`,
+        `📡 [Gateway] Broadcasted aviator:statusChange (FINISHED) event`,
+      );
+      this.logger.log(
+        `✅ [Gateway] Game #${gameId} fully processed. Creating new game in 3s...`,
       );
 
-      // Create new game after 3 seconds
+      // Create new game after 3 seconds with retry logic
       setTimeout(async () => {
-        try {
-          const newGame = await this.aviatorService.createOrGetAviator();
-          this.currentGameId = newGame.id;
-          this.logger.log(
-            `🆕 New game #${newGame.id} created with status ${newGame.status}`,
-          );
-          this.broadcastGameState(newGame);
+        this.logger.log(
+          `🔄 [Gateway] ===== CREATING NEW GAME AFTER CRASH =====`,
+        );
+        let attempts = 0;
+        const maxAttempts = 3;
 
-          // Schedule auto-start for new game
-          const timeUntilStart =
-            new Date(newGame.startsAt).getTime() - Date.now();
-          if (timeUntilStart > 0) {
+        while (attempts < maxAttempts) {
+          try {
             this.logger.log(
-              `⏰ Scheduling game #${newGame.id} to start in ${Math.ceil(timeUntilStart / 1000)}s`,
+              `📝 [Gateway] Creating new game after crash (attempt ${attempts + 1}/${maxAttempts})...`,
             );
-            this.gameStartTimeout = setTimeout(() => {
-              this.startGame(newGame.id);
-            }, timeUntilStart);
+
+            const newGame = await this.aviatorService.createOrGetAviator();
+            this.currentGameId = newGame.id;
+
+            this.logger.log(
+              `🆕 [Gateway] New game #${newGame.id} created successfully with status ${newGame.status}, startsAt: ${new Date(newGame.startsAt).toISOString()}`,
+            );
+
+            // 🚨 IMPORTANT: Join ALL connected clients to the new game room
+            const newGameRoom = `aviator-game-${newGame.id}`;
+            const connectedSockets = await this.server.fetchSockets();
+
+            this.logger.log(
+              `🚪 [Gateway] Joining ${connectedSockets.length} connected clients to new game room: ${newGameRoom}`,
+            );
+
+            for (const socket of connectedSockets) {
+              socket.join(newGameRoom);
+            }
+
+            this.logger.log(
+              `✅ [Gateway] All clients joined game room: ${newGameRoom}`,
+            );
+
+            // Broadcast new game state
+            this.broadcastGameState(newGame);
+            this.logger.log(
+              `📡 [Gateway] Broadcasted new game state to all clients`,
+            );
+
+            // Schedule auto-start for new game
+            const timeUntilStart =
+              new Date(newGame.startsAt).getTime() - Date.now();
+            if (timeUntilStart > 0) {
+              this.logger.log(
+                `⏰ [Gateway] Scheduling game #${newGame.id} to start in ${Math.ceil(timeUntilStart / 1000)}s`,
+              );
+              this.gameStartTimeout = setTimeout(() => {
+                this.logger.log(
+                  `⏰ [Gateway] Auto-start timeout triggered for game #${newGame.id}`,
+                );
+                this.startGame(newGame.id).catch((err) =>
+                  this.logger.error('[Gateway] Failed to auto-start game', err),
+                );
+              }, timeUntilStart);
+            } else {
+              // If start time already passed, start immediately
+              this.logger.warn(
+                `⚠️ [Gateway] Start time already passed, starting game #${newGame.id} immediately`,
+              );
+              await this.startGame(newGame.id);
+            }
+
+            this.logger.log(`✅ [Gateway] ===== NEW GAME CYCLE COMPLETE =====`);
+            break; // Success - exit retry loop
+          } catch (error) {
+            attempts++;
+            this.logger.error(
+              `❌ [Gateway] Failed to create new game (attempt ${attempts}/${maxAttempts}):`,
+              error,
+            );
+
+            if (attempts >= maxAttempts) {
+              // CRITICAL ERROR - notify all clients
+              this.logger.error(
+                '🚨 CRITICAL: Failed to create new game after 3 attempts!',
+              );
+
+              // Broadcast error to all clients
+              this.server.emit('error', {
+                message: 'Failed to start new game. Please refresh the page.',
+                code: 'GAME_CREATION_FAILED',
+                timestamp: new Date().toISOString(),
+              });
+
+              // TODO: Send alert to monitoring/admin system
+              // await this.notifyAdmin('Critical: Game creation failed after 3 attempts');
+            } else {
+              // Wait 2 seconds before retry
+              this.logger.log(`⏳ Retrying in 2 seconds...`);
+              await new Promise((resolve) => setTimeout(resolve, 2000));
+            }
           }
-        } catch (error) {
-          this.logger.error('Error creating new game after crash:', error);
         }
       }, 3000);
     } catch (error) {
@@ -367,8 +581,14 @@ export class WebsocketGateway
     try {
       const crashMultiplier = Number(game.multiplier);
 
+      this.logger.log(
+        `🎲 [Gateway] Processing game results for ${game.bets?.length || 0} bets at ${crashMultiplier}x`,
+      );
+
       if (!game.bets || game.bets.length === 0) {
-        this.logger.debug('No bets in game, skipping results processing');
+        this.logger.log(
+          '📝 [Gateway] No bets in game, skipping results processing',
+        );
         return;
       }
 
@@ -378,13 +598,29 @@ export class WebsocketGateway
           const username = bet.user?.username || 'Unknown';
 
           if (!userId) {
-            this.logger.warn(`Bet #${bet.id} has no user ID, skipping`);
+            this.logger.warn(
+              `⚠️ [Gateway] Bet #${bet.id} has no user ID, skipping`,
+            );
             continue;
           }
 
           const socketId = this.activeUsers.get(userId);
           const betAmount = Number(bet.amount);
           const cashedAt = bet.cashedAt ? Number(bet.cashedAt) : null;
+
+          this.logger.log(
+            `🎯 [Gateway] Processing bet #${bet.id} for user ${username} (${userId})`,
+          );
+          this.logger.log(`   - Bet Amount: ${betAmount}`);
+          this.logger.log(
+            `   - Cashed At: ${cashedAt !== null ? `${cashedAt}x` : 'NULL (NOT CASHED OUT)'}`,
+          );
+          this.logger.log(
+            `   - Socket ID: ${socketId || 'NOT IN activeUsers MAP'}`,
+          );
+          this.logger.log(
+            `   - Active Users Map Size: ${this.activeUsers.size}`,
+          );
 
           // Player won if they cashed out
           if (cashedAt !== null) {
@@ -398,47 +634,124 @@ export class WebsocketGateway
               timestamp: new Date().toISOString(),
             };
 
+            this.logger.log(
+              `📤 [Gateway] EMITTING aviator:win to ${username}: ${JSON.stringify(winEvent)}`,
+            );
+
             // Send to specific user if connected
+            // Try TWO methods: room-based (primary) and direct socket (fallback)
+            this.logger.log(
+              `📤 [Gateway] Attempting to send win event via room: ${userId}`,
+            );
+
+            // Method 1: Send via personal room (RECOMMENDED - more reliable)
+            this.server.to(userId).emit('aviator:win', winEvent);
+            this.logger.log(
+              `✅ [Gateway] WIN event sent via room to ${username}`,
+            );
+
+            // Method 2: Also try direct socket send as fallback
             if (socketId) {
-              const socket = this.server.sockets.sockets.get(socketId);
+              const socket = this.getSocketById(socketId);
               if (socket) {
                 socket.emit('aviator:win', winEvent);
+                this.logger.log(
+                  `✅ [Gateway] WIN event also sent via direct socket to ${username}`,
+                );
+              } else {
+                this.logger.warn(
+                  `⚠️ [Gateway] Socket ${socketId} not found for fallback send to ${username}`,
+                );
               }
+            } else {
+              this.logger.warn(
+                `⚠️ [Gateway] User ${username} not in activeUsers map, relied on room-based send`,
+              );
             }
 
             this.logger.log(
-              `✅ WIN: ${username} won ${winAmount} (cashed at ${cashedAt}x)`,
+              `✅ [Gateway] WIN event processing completed for ${username} (won ${winAmount} at ${cashedAt}x)`,
             );
           }
           // Player lost if they didn't cash out
           else {
+            this.logger.log(
+              `💔 [Gateway] Bet #${bet.id} is a LOSING BET (cashedAt is NULL)`,
+            );
+
             const loseEvent = {
               betId: bet.id,
               betAmount: betAmount,
               crashMultiplier: crashMultiplier,
+              timestamp: new Date().toISOString(),
             };
 
+            this.logger.log(
+              `📤 [Gateway] PREPARING TO EMIT aviator:lose to ${username} (${userId})`,
+            );
+            this.logger.log(`   - Lose Event: ${JSON.stringify(loseEvent)}`);
+
+            // Check if user is in activeUsers map
+            if (!socketId) {
+              this.logger.error(
+                `❌ [Gateway] CRITICAL: User ${username} (${userId}) NOT FOUND in activeUsers map!`,
+              );
+              this.logger.error(
+                `   - activeUsers map has ${this.activeUsers.size} entries`,
+              );
+              this.logger.error(
+                `   - User IDs in map: ${Array.from(this.activeUsers.keys()).join(', ')}`,
+              );
+            }
+
             // Send to specific user if connected
+            // Try TWO methods: room-based (primary) and direct socket (fallback)
+            this.logger.log(
+              `� [Gateway] Attempting to send lose event via room: ${userId}`,
+            );
+
+            // Method 1: Send via personal room (RECOMMENDED - more reliable)
+            this.server.to(userId).emit('aviator:lose', loseEvent);
+            this.logger.log(
+              `✅ [Gateway] LOSE event sent via room to ${username}`,
+            );
+
+            // Method 2: Also try direct socket send as fallback
             if (socketId) {
-              const socket = this.server.sockets.sockets.get(socketId);
+              const socket = this.getSocketById(socketId);
               if (socket) {
                 socket.emit('aviator:lose', loseEvent);
+                this.logger.log(
+                  `✅ [Gateway] LOSE event also sent via direct socket to ${username}`,
+                );
+              } else {
+                this.logger.warn(
+                  `⚠️ [Gateway] Socket ${socketId} not found for fallback send to ${username}`,
+                );
               }
+            } else {
+              this.logger.warn(
+                `⚠️ [Gateway] User ${username} not in activeUsers map, relied on room-based send`,
+              );
             }
 
             this.logger.log(
-              `❌ LOSE: ${username} lost ${betAmount} (crashed at ${crashMultiplier}x)`,
+              `✅ [Gateway] LOSE event processing completed for ${username} (lost ${betAmount} at ${crashMultiplier}x)`,
             );
           }
         } catch (betError) {
           this.logger.error(
-            `Error processing result for bet #${bet.id}:`,
+            `❌ [Gateway] Error processing result for bet #${bet.id}:`,
             betError,
           );
         }
       }
+
+      this.logger.log(
+        `✅ [Gateway] Finished processing all ${game.bets.length} bets`,
+      );
     } catch (error) {
-      this.logger.error('Error in processGameResults:', error);
+      this.logger.error('❌ [Gateway] Error in processGameResults:', error);
     }
   }
 
@@ -486,7 +799,7 @@ export class WebsocketGateway
             continue;
           }
 
-          const socket = this.server.sockets.sockets.get(socketId);
+          const socket = this.getSocketById(socketId);
 
           if (!socket) {
             this.logger.debug(
@@ -630,8 +943,7 @@ export class WebsocketGateway
       // Check if user already has an active connection
       const existingSocketId = this.activeUsers.get(user.id);
       if (existingSocketId) {
-        const existingSocket =
-          this.server.sockets.sockets.get(existingSocketId);
+        const existingSocket = this.getSocketById(existingSocketId);
         if (existingSocket) {
           this.logger.log(
             `User ${user.username} (${user.id}) already connected. Disconnecting old socket ${existingSocketId}`,
@@ -648,11 +960,56 @@ export class WebsocketGateway
       client.data.username = user.username;
       client.data.role = user.role;
 
+      // 🚨 CRITICAL: Join user to personal room for targeted events (win/lose)
+      // Each user has their OWN personal room (userId)
+      client.join(user.id);
+      this.logger.log(
+        `🚪 [Gateway] User ${user.username} joined personal room: ${user.id}`,
+      );
+
+      // Join SHARED game room if current game exists
+      // ALL players join the SAME game room (aviator-game-{gameId})
+      try {
+        // Try to get current game (may not exist yet)
+        const currentGame = await this.prisma.aviator.findFirst({
+          where: {
+            status: {
+              in: ['WAITING', 'ACTIVE'],
+            },
+          },
+          orderBy: {
+            createdAt: 'desc',
+          },
+        });
+
+        if (currentGame) {
+          const gameRoom = `aviator-game-${currentGame.id}`;
+          client.join(gameRoom);
+          this.logger.log(
+            `🚪 [Gateway] User ${user.username} joined SHARED game room: ${gameRoom}`,
+          );
+        } else {
+          this.logger.log(
+            `📝 [Gateway] No active game yet, user ${user.username} will join game room when game is created`,
+          );
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Could not join game room for user ${user.username}: ${error.message}`,
+        );
+      }
+
       // Add to active users (replace any existing connection)
       this.activeUsers.set(user.id, client.id);
 
       this.logger.log(
-        `User ${user.username} (${user.id}) connected with socket ${client.id}`,
+        `✅ User ${user.username} (${user.id}) connected with socket ${client.id}`,
+      );
+      this.logger.log(
+        `   - Added to activeUsers map (size: ${this.activeUsers.size})`,
+      );
+      this.logger.log(
+        `   - Active users: ${Array.from(this.activeUsers.keys()).slice(0, 5).join(', ')}...`,
       );
 
       // Emit active users count to all clients
@@ -715,6 +1072,23 @@ export class WebsocketGateway
       data: {
         timestamp: new Date().toISOString(),
         activeUsers: this.getActiveUsersCount(),
+      },
+    };
+  }
+
+  @UseGuards(WsJwtGuard)
+  @SubscribeMessage('getServerTime')
+  handleGetServerTime(@ConnectedSocket() client: Socket): {
+    event: string;
+    data: any;
+  } {
+    return {
+      event: 'serverTime',
+      data: {
+        serverTime: Date.now(),
+        serverTimestamp: new Date().toISOString(),
+        multiplierFormula: 5000, // ms per 1.0x
+        tickRate: 50, // ms between ticks
       },
     };
   }
@@ -792,6 +1166,42 @@ export class WebsocketGateway
         };
       }
 
+      // ⚠️ EMERGENCY CHECK: If game is WAITING but should have started, start it NOW
+      const now = Date.now();
+      const startTime = new Date(game.startsAt).getTime();
+
+      if (game.status === 'WAITING' && startTime < now) {
+        const elapsed = now - startTime;
+        this.logger.warn(
+          `⚠️ [Emergency] Game #${game.id} should have started ${Math.floor(elapsed / 1000)}s ago! Starting NOW...`,
+        );
+
+        // Start the game immediately
+        await this.startGame(game.id);
+
+        // Get the updated game
+        const updatedGame = await this.aviatorService.getCurrentGame();
+
+        const response = {
+          ...updatedGame,
+          multiplier: Number(updatedGame.multiplier),
+          bets: updatedGame.bets.map((bet) => ({
+            ...bet,
+            amount: Number(bet.amount),
+            cashedAt: bet.cashedAt ? Number(bet.cashedAt) : null,
+          })),
+        };
+
+        this.logger.log(
+          `✅ [Emergency] Started game #${updatedGame.id} and sent to client ${client.id}`,
+        );
+
+        return {
+          event: 'aviator:game',
+          data: response,
+        };
+      }
+
       // Convert Decimal fields to numbers
       const response = {
         ...game,
@@ -830,8 +1240,19 @@ export class WebsocketGateway
   ) {
     try {
       const userId = client.data.userId;
+      const username = client.data.username;
+
       this.logger.log(
-        `User ${userId} placing bet on aviator #${data.aviatorId} for ${data.amount}`,
+        `🎰 [BET] User ${username} (${userId}) placing bet on aviator #${data.aviatorId} for ${data.amount}`,
+      );
+
+      // Check if user is in activeUsers map
+      const socketId = this.activeUsers.get(userId);
+      this.logger.log(
+        `🔍 [BET] User ${username} activeUsers check: ${socketId ? `✅ Found (${socketId})` : '❌ NOT FOUND'}`,
+      );
+      this.logger.log(
+        `📊 [BET] Current activeUsers map size: ${this.activeUsers.size}`,
       );
 
       if (!data.aviatorId || !data.amount) {
@@ -853,7 +1274,13 @@ export class WebsocketGateway
       );
 
       this.logger.log(
-        `Bet #${bet.id} placed successfully by user ${userId}. Broadcasting to all clients.`,
+        `✅ [BET] Bet #${bet.id} placed successfully by ${username} (${userId}). Broadcasting to all clients.`,
+      );
+
+      // Verify user is still in activeUsers after bet placement
+      const socketIdAfter = this.activeUsers.get(userId);
+      this.logger.log(
+        `🔍 [BET] User ${username} activeUsers check AFTER bet: ${socketIdAfter ? `✅ Found (${socketIdAfter})` : '❌ NOT FOUND'}`,
       );
 
       // Convert Decimal to number for JSON
@@ -935,7 +1362,7 @@ export class WebsocketGateway
         `User ${userId} cashed out bet #${data.betId} successfully. Win: ${result.winAmount}. Broadcasting to all clients.`,
       );
 
-      // Broadcast cash out to all clients
+      // Broadcast cash out to all clients (public event showing someone cashed out)
       this.server.emit('aviator:cashOut', {
         betId: result.bet.id,
         aviatorId: result.bet.aviatorId,
@@ -946,6 +1373,54 @@ export class WebsocketGateway
         winAmount: result.winAmount,
         timestamp: result.bet.updatedAt,
       });
+
+      this.logger.log(
+        `📡 [Gateway] Broadcasted aviator:cashOut event to all clients`,
+      );
+
+      // Send personal win event to the player
+      const winEvent = {
+        betId: result.bet.id,
+        betAmount: result.bet.amount,
+        cashedAt: result.multiplier,
+        winAmount: result.winAmount,
+        crashMultiplier: null, // Will be set when game crashes
+        timestamp: new Date().toISOString(),
+      };
+
+      this.logger.log(
+        `📤 [Gateway] EMITTING aviator:win after cashout to user ${result.bet.user.username}: ${JSON.stringify(winEvent)}`,
+      );
+
+      // Method 1: Send via personal room (RECOMMENDED - more reliable)
+      this.server.to(userId).emit('aviator:win', winEvent);
+      this.logger.log(
+        `✅ [Gateway] WIN event sent via room to ${result.bet.user.username}`,
+      );
+
+      // Method 2: Also try direct socket send as fallback
+      const socketId = this.activeUsers.get(userId);
+      if (socketId) {
+        const socket = this.getSocketById(socketId);
+        if (socket) {
+          socket.emit('aviator:win', winEvent);
+          this.logger.log(
+            `✅ [Gateway] WIN event also sent via direct socket to ${result.bet.user.username}`,
+          );
+        } else {
+          this.logger.warn(
+            `⚠️ [Gateway] Socket ${socketId} not found for fallback send after cashout`,
+          );
+        }
+      } else {
+        this.logger.warn(
+          `⚠️ [Gateway] User ${userId} not in activeUsers map after cashout, relied on room-based send`,
+        );
+      }
+
+      this.logger.log(
+        `✅ [Gateway] WIN event after cashout completed for ${result.bet.user.username} (won ${result.winAmount} at ${result.multiplier}x)`,
+      );
 
       return {
         event: 'aviator:cashedOut',
@@ -1243,6 +1718,20 @@ export class WebsocketGateway
     }
   }
 
+  /**
+   * Safely get a socket by ID
+   * @param socketId Socket ID to retrieve
+   * @returns Socket instance or undefined if not found
+   */
+  private getSocketById(socketId: string): Socket | undefined {
+    try {
+      return this.server?.sockets?.sockets?.get(socketId);
+    } catch (error) {
+      this.logger.warn(`Failed to get socket ${socketId}:`, error);
+      return undefined;
+    }
+  }
+
   // Helper method to get active users count
   getActiveUsersCount(): number {
     return this.activeUsers.size;
@@ -1266,7 +1755,7 @@ export class WebsocketGateway
   > {
     const details = [];
     this.activeUsers.forEach((socketId, userId) => {
-      const socket = this.server.sockets.sockets.get(socketId);
+      const socket = this.getSocketById(socketId);
       if (socket) {
         details.push({
           userId,
