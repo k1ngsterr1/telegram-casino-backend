@@ -40,7 +40,7 @@ export class PaymentService {
         },
       });
 
-      return await this.bot.createInvoice({
+      const invoiceResponse = await this.bot.createInvoice({
         title: getMessage(languageCode, 'payment.title'),
         description: getMessage(languageCode, 'payment.description'),
         payload: `payment_${payment.id}`,
@@ -51,6 +51,11 @@ export class PaymentService {
           },
         ],
       });
+
+      return {
+        invoiceLink: invoiceResponse.invoice,
+        paymentId: payment.id,
+      };
     } catch (error) {
       if (payment) {
         await this.prisma.payment.delete({ where: { id: payment.id } });
