@@ -1,6 +1,7 @@
 import {
   Controller,
   Post,
+  Get,
   Body,
   UseGuards,
   HttpException,
@@ -18,14 +19,19 @@ import { UserGuard } from '../shared/guards/user.guard';
 import { User } from '../shared/decorator/user.decorator';
 import { CreateStarsPaymentDto } from './dto/create-stars-payment.dto';
 import { InitiateTonPaymentDto } from './dto/initiate-ton-payment.dto';
+import { TonInfoResponseDto } from './dto/ton-info-response.dto';
 import { AuthGuard } from '@nestjs/passport';
+import { TonService } from './services/ton.service';
 
 @ApiTags('Payment')
 @Controller('payment')
 export class PaymentController {
   private readonly logger = new Logger(PaymentController.name);
 
-  constructor(private readonly paymentService: PaymentService) {}
+  constructor(
+    private readonly paymentService: PaymentService,
+    private readonly tonService: TonService,
+  ) {}
 
   @Post('stars')
   @UseGuards(AuthGuard('jwt'), UserGuard)
@@ -152,5 +158,28 @@ export class PaymentController {
     @Body() data: InitiateTonPaymentDto,
   ) {
     return await this.paymentService.initiateTonPayment(userId, data);
+  }
+
+  @Get('ton/info')
+  @ApiOperation({
+    summary: 'Get TON payment information',
+    description:
+      'Returns current TON price in USD, its equivalent in Telegram Stars, and the Stars to USD conversion rate.',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'TON information retrieved successfully',
+    type: TonInfoResponseDto,
+  })
+  async getTonInfo(): Promise<TonInfoResponseDto> {
+    try {
+      return await this.tonService.getTonInfo();
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to get TON info', error);
+      throw new HttpException('Failed to retrieve TON information', 500);
+    }
   }
 }

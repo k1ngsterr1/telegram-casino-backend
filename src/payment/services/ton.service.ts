@@ -13,6 +13,10 @@ export class TonService implements OnModuleInit {
   // Telegram Stars conversion rate: 1 Star = $0.013 USD
   private readonly STARS_TO_USD_RATE = 0.013;
 
+  getStarsToUsdRate(): number {
+    return this.STARS_TO_USD_RATE;
+  } 
+
   constructor(private configService: ConfigService) {
     const API_KEY = this.configService.getOrThrow<string>('TON_API_KEY');
     const wallet = this.configService.getOrThrow<string>('TON_WALLET_ADDRESS');
@@ -41,6 +45,16 @@ export class TonService implements OnModuleInit {
 
   async convertToStars(usd: number): Promise<number> {
     return parseFloat((usd / this.STARS_TO_USD_RATE).toFixed(2));
+  }
+
+  async getTonInfo() {
+    const tonPriceUsd = await this.getPrice();
+    const tonPriceInStars = await this.convertToStars(tonPriceUsd);
+    return {
+      tonPriceUsd,
+      tonPriceInStars,
+      starsToUsdRate: this.STARS_TO_USD_RATE,
+    };
   }
 
   @Cron(CronExpression.EVERY_MINUTE)
