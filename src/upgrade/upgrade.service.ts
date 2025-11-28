@@ -127,8 +127,8 @@ export class UpgradeService {
         const multiplierValue = Number(upgradeChance.multiplier);
         const targetAmount = Math.floor(sourcePrize.amount * multiplierValue);
 
-        // Find the closest prize with amount >= targetAmount
-        const targetPrize = await this.prisma.prize.findFirst({
+        // Пытаемся найти приз с нужной или большей суммой
+        let targetPrize = await this.prisma.prize.findFirst({
           where: {
             amount: {
               gte: targetAmount,
@@ -138,6 +138,15 @@ export class UpgradeService {
             amount: 'asc',
           },
         });
+
+        // Если не нашли подходящий приз, берем самый дорогой доступный
+        if (!targetPrize) {
+          targetPrize = await this.prisma.prize.findFirst({
+            orderBy: {
+              amount: 'desc',
+            },
+          });
+        }
 
         if (targetPrize) {
           options.push({
@@ -229,7 +238,8 @@ export class UpgradeService {
         const multiplierValue = Number(upgradeChance.multiplier);
         const targetAmount = Math.floor(sourcePrize.amount * multiplierValue);
 
-        const targetPrize = await tx.prize.findFirst({
+        // Пытаемся найти приз с нужной или большей суммой
+        let targetPrize = await tx.prize.findFirst({
           where: {
             amount: {
               gte: targetAmount,
@@ -240,11 +250,18 @@ export class UpgradeService {
           },
         });
 
+        // Если не нашли подходящий приз, берем самый дорогой доступный
         if (!targetPrize) {
-          throw new HttpException(
-            'No suitable target prize found for this upgrade',
-            400,
-          );
+          targetPrize = await tx.prize.findFirst({
+            orderBy: {
+              amount: 'desc',
+            },
+          });
+
+          // Если вообще нет призов в базе (критическая ошибка)
+          if (!targetPrize) {
+            throw new HttpException('No prizes available in the system', 500);
+          }
         }
 
         // 4. Determine success/failure using random
