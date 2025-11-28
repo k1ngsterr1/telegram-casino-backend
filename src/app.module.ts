@@ -44,7 +44,7 @@ import { join } from 'path';
     PaymentModule,
     UploadModule,
     LeaderboardModule,
-    GiftModule,
+    // GiftModule,
   ],
 })
 export class AppModule {}
