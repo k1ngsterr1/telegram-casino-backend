@@ -17,6 +17,7 @@ import {
 import { AuthGuard } from '@nestjs/passport';
 import { UpgradeService } from './upgrade.service';
 import { UserGuard } from '../shared/guards/user.guard';
+import { AuthGuard } from '@nestjs/passport';
 import { User } from '../shared/decorator/user.decorator';
 import { GetUpgradeOptionsDto } from './dto/get-upgrade-options.dto';
 import { ExecuteUpgradeDto } from './dto/execute-upgrade.dto';
