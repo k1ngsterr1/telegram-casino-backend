@@ -29,7 +29,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     JwtStrategy,
     ReferralService,
     GiftService,
-    // TelegramUserbotService,
+    TelegramUserbotService,
   ],
   exports: [
     PrismaService,
@@ -39,7 +39,7 @@ import { ScheduleModule } from '@nestjs/schedule';
     JwtModule,
     ReferralService,
     GiftService,
-    // TelegramUserbotService,
+    TelegramUserbotService,
   ],
 })
 export class SharedModule {}

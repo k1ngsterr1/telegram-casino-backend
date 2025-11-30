@@ -113,31 +113,23 @@ export class TelegramUserbotService implements OnModuleDestroy {
     this.isInitializing = true;
 
     try {
-      // Read credentials from database (System table)
-      const apiIdRecord = await this.prisma.system.findUnique({
-        where: { key: 'TELEGRAM_API_ID' },
-      });
-      const apiHashRecord = await this.prisma.system.findUnique({
-        where: { key: 'TELEGRAM_API_HASH' },
-      });
-      const sessionRecord = await this.prisma.system.findUnique({
-        where: { key: 'TELEGRAM_SESSION_STRING' },
-      });
+      // Read credentials from environment variables
+      const apiIdStr = process.env.TELEGRAM_API_ID;
+      const apiHash = process.env.TELEGRAM_API_HASH;
+      const sessionString = process.env.TELEGRAM_SESSION_STRING || '';
 
-      if (!apiIdRecord || !apiHashRecord) {
+      if (!apiIdStr || !apiHash) {
         throw new HttpException(
-          'Telegram API credentials not found in System table. Please configure TELEGRAM_API_ID and TELEGRAM_API_HASH',
+          'Telegram API credentials not found in environment variables. Please configure TELEGRAM_API_ID and TELEGRAM_API_HASH',
           500,
         );
       }
 
-      const apiId = parseInt(apiIdRecord.value, 10);
-      const apiHash = apiHashRecord.value;
-      const sessionString = sessionRecord?.value || '';
+      const apiId = parseInt(apiIdStr, 10);
 
       if (isNaN(apiId)) {
         throw new HttpException(
-          `Invalid TELEGRAM_API_ID: expected number but received ${apiIdRecord.value}`,
+          `Invalid TELEGRAM_API_ID: expected number but received ${apiIdStr}`,
           500,
         );
       }
