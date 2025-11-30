@@ -24,7 +24,7 @@ import { ScheduleModule } from '@nestjs/schedule';
   ],
   providers: [
     PrismaService,
-    BotService,
+    // BotService,
     CronService,
     JwtStrategy,
     ReferralService,
@@ -33,7 +33,7 @@ import { ScheduleModule } from '@nestjs/schedule';
   ],
   exports: [
     PrismaService,
-    BotService,
+    // BotService,
     CronService,
     JwtStrategy,
     JwtModule,

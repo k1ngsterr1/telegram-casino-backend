@@ -28,6 +28,19 @@ async function main() {
   });
   console.log('✓ WEBAPP_URL seeded');
 
+  // Seed Telegram Session String (if provided in .env)
+  if (process.env.TELEGRAM_SESSION_STRING) {
+    await prisma.system.upsert({
+      where: { key: SystemKey.TELEGRAM_SESSION_STRING },
+      update: { value: process.env.TELEGRAM_SESSION_STRING },
+      create: {
+        key: SystemKey.TELEGRAM_SESSION_STRING,
+        value: process.env.TELEGRAM_SESSION_STRING,
+      },
+    });
+    console.log('✓ Telegram session string seeded from environment');
+  }
+
   console.log('\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🤖 TELEGRAM BOT');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
