@@ -46,6 +46,24 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         this.webAppUrl,
       );
 
+      // Get user photo from Telegram
+      let photo: string | null = null;
+      try {
+        const photos = await ctx.api.getUserProfilePhotos(telegramId, {
+          limit: 1,
+        });
+        if (photos.total_count > 0) {
+          const fileId = photos.photos[0][0].file_id;
+          const file = await ctx.api.getFile(fileId);
+          photo = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
+        }
+      } catch (error) {
+        this.logger.warn(
+          `Failed to fetch photo for user ${telegramId}:`,
+          error,
+        );
+      }
+
       // Extract referral code from /start command (format: /start ref_USERID)
       const startPayload = ctx.match; // Gets everything after /start
       let referrerId: string | null = null;
@@ -101,12 +119,14 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           update: {
             username: username,
             languageCode: languageCode,
+            photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),
           },
           create: {
             telegramId: telegramId.toString(),
             username: username,
             languageCode: languageCode,
+            photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),
           },
         }),

@@ -62,6 +62,7 @@ model User {
   id           String          @id @default(uuid())
   telegramId   String          @unique
   username     String
+  photo        String?
   languageCode LanguageCode
   balance      Decimal         @default(0)
   rating       Int             @default(0) // User's rank position based on balance
