@@ -43,31 +43,12 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       const languageCode =
         ctx.from.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
 
-      // Получаем фото профиля пользователя
-      let photoUrl: string | null = null;
-      try {
-        const userProfilePhotos = await ctx.api.getUserProfilePhotos(
-          telegramId,
-          { limit: 1 },
-        );
-
-        if (userProfilePhotos.photos.length > 0) {
-          const photo = userProfilePhotos.photos[0][0]; // Берем первое фото в наименьшем размере
-          const file = await ctx.api.getFile(photo.file_id);
-          photoUrl = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
-          this.logger.log(`Got photo URL for user ${telegramId}: ${photoUrl}`);
-        }
-      } catch (error) {
-        this.logger.error(`Failed to get user photo for ${telegramId}:`, error);
-      }
-
       const keyboard = new InlineKeyboard().webApp(
         getMessage(languageCode, 'bot.buttonText'),
         this.webAppUrl,
       );
 
-      // Get user photo from Telegram
-      let photo: string | null = null;
+      let photoUrl: string | null = null;
       try {
         const photos = await ctx.api.getUserProfilePhotos(telegramId, {
           limit: 1,
@@ -75,7 +56,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         if (photos.total_count > 0) {
           const fileId = photos.photos[0][0].file_id;
           const file = await ctx.api.getFile(fileId);
-          photo = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
+          photoUrl = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
         }
       } catch (error) {
         this.logger.warn(
@@ -84,8 +65,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
         );
       }
 
-      // Extract referral code from /start command (format: /start ref_USERID)
-      const startPayload = ctx.match; // Gets everything after /start
+      const startPayload = ctx.match;
       let referrerId: string | null = null;
 
       if (startPayload && typeof startPayload === 'string') {
@@ -142,7 +122,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             lastName: lastName,
             photoUrl: photoUrl,
             languageCode: languageCode,
-            photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),
           },
           create: {
@@ -152,7 +131,6 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
             lastName: lastName,
             photoUrl: photoUrl,
             languageCode: languageCode,
-            photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),
           },
         }),
