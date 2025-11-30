@@ -114,19 +114,43 @@ export class GiftService {
         );
       }
 
-      // Save to database
+      // Create a prize for this gift
+      const prize = await this.prisma.prize.create({
+        data: {
+          name:
+            giftData.nftTitle ||
+            `Telegram Gift (${isUniqueGift ? 'NFT' : `${giftData.starsValue || 0} stars`})`,
+          amount: giftData.starsValue || 0,
+          url: '',
+        },
+      });
+
+      // Create inventory item for the user
+      const inventoryItem = await this.prisma.inventoryItem.create({
+        data: {
+          userId: user.id,
+          prizeId: prize.id,
+        },
+      });
+
+      // Save gift record with reference to inventory item
+      giftData.status = 'CONVERTED';
+      giftData.convertedAt = new Date();
+      giftData.convertedValue = prize.amount;
+      giftData.inventoryItemId = inventoryItem.id;
+
       const savedGift = await this.prisma.telegramGift.create({
         data: giftData,
       });
 
       this.logger.log(
-        `✅ Saved ${isUniqueGift ? 'NFT' : 'star'} gift ${savedGift.id} for user ${receiverTelegramId}`,
+        `✅ Saved ${isUniqueGift ? 'NFT' : 'star'} gift ${savedGift.id} as inventory item ${inventoryItem.id} for user ${receiverTelegramId}`,
       );
 
       return {
         success: true,
         giftId: savedGift.id,
-        message: `Saved ${isUniqueGift ? 'NFT' : 'star'} gift for user ${receiverTelegramId}`,
+        message: `Saved ${isUniqueGift ? 'NFT' : 'star'} gift as inventory item for user ${receiverTelegramId}`,
       };
     } catch (error) {
       this.logger.error('Failed to process gift message:', error);

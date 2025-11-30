@@ -221,27 +221,40 @@ export class TelegramUserbotService implements OnModuleDestroy {
           this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
           this.logger.log(`TELEGRAM_SESSION_STRING=${newSessionString}`);
           this.logger.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-          this.logger.log('💡 Add this line to your .env file to avoid re-authentication');
+          this.logger.log(
+            '💡 Add this line to your .env file to avoid re-authentication',
+          );
           this.logger.log('');
         }
       } else {
         // Use existing session
         this.logger.log('📡 Connecting to Telegram using saved session...');
         this.logger.log('⏱️  Connection timeout: 60 seconds');
-        
+
         const connectPromise = this.client.connect().then(() => {
           this.logger.log('✅ Connected to Telegram successfully');
         });
-        
+
         const timeoutPromise = new Promise((_, reject) => {
           setTimeout(
             () => {
               this.logger.error('❌ Connection timeout exceeded (60s)');
               this.logger.error('💡 Possible causes:');
-              this.logger.error('   1. Session expired - try clearing TELEGRAM_SESSION_STRING from .env');
-              this.logger.error('   2. Network/firewall blocking Telegram servers');
-              this.logger.error('   3. Another instance using the same session');
-              reject(new HttpException('Telegram client connect timeout - see logs for troubleshooting', 500));
+              this.logger.error(
+                '   1. Session expired - try clearing TELEGRAM_SESSION_STRING from .env',
+              );
+              this.logger.error(
+                '   2. Network/firewall blocking Telegram servers',
+              );
+              this.logger.error(
+                '   3. Another instance using the same session',
+              );
+              reject(
+                new HttpException(
+                  'Telegram client connect timeout - see logs for troubleshooting',
+                  500,
+                ),
+              );
             },
             60000, // Increased to 60 seconds
           );
@@ -270,12 +283,18 @@ export class TelegramUserbotService implements OnModuleDestroy {
       }
 
       if (error.message && error.message.includes('connect timeout')) {
-        this.logger.error('❌ Connection timeout - clearing session from database');
+        this.logger.error(
+          '❌ Connection timeout - clearing session from database',
+        );
         try {
-          await this.prisma.system.delete({
-            where: { key: 'TELEGRAM_SESSION_STRING' },
-          }).catch(() => {});
-          this.logger.log('✅ Session cleared. Please restart the app to re-authenticate');
+          await this.prisma.system
+            .delete({
+              where: { key: 'TELEGRAM_SESSION_STRING' },
+            })
+            .catch(() => {});
+          this.logger.log(
+            '✅ Session cleared. Please restart the app to re-authenticate',
+          );
         } catch (clearError) {
           this.logger.warn('Could not clear session:', clearError.message);
         }
