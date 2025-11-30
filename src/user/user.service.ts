@@ -139,10 +139,26 @@ export class UserService {
         where: { telegramId },
         update: {
           ...(shouldSetReferrer && { referredBy: referrerId }),
+          // Обновляем фото и имена при каждом входе
+          ...(parsedData.user.photo_url && {
+            photoUrl: parsedData.user.photo_url,
+          }),
+          ...(parsedData.user.first_name && {
+            firstName: parsedData.user.first_name,
+          }),
+          ...(parsedData.user.last_name && {
+            lastName: parsedData.user.last_name,
+          }),
+          ...(parsedData.user.username && {
+            username: parsedData.user.username,
+          }),
         },
         create: {
           telegramId,
           username: parsedData.user.username || 'Unknown',
+          firstName: parsedData.user.first_name,
+          lastName: parsedData.user.last_name,
+          photoUrl: parsedData.user.photo_url,
           languageCode: parsedData.user.language_code === 'ru' ? 'ru' : 'en',
           ...(shouldSetReferrer && { referredBy: referrerId }),
         },

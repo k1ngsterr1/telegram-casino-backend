@@ -24,6 +24,7 @@ export class LeaderboardService {
         select: {
           id: true,
           username: true,
+          photoUrl: true,
           totalVolume: true,
           totalSpins: true,
         },
@@ -38,6 +39,7 @@ export class LeaderboardService {
           position: index + 1,
           userId: user.id,
           username: user.username,
+          photoUrl: user.photoUrl,
           totalSpins: user.totalSpins,
           totalVolume: Number(user.totalVolume),
         })),
@@ -64,6 +66,7 @@ export class LeaderboardService {
         select: {
           id: true,
           username: true,
+          photoUrl: true,
           totalVolume: true,
           totalSpins: true,
         },
@@ -78,6 +81,7 @@ export class LeaderboardService {
           position: index + 1,
           userId: user.id,
           username: user.username,
+          photoUrl: user.photoUrl,
           totalSpins: user.totalSpins,
           totalVolume: Number(user.totalVolume),
         })),

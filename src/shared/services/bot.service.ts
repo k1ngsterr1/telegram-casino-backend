@@ -38,8 +38,28 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     this.bot.command('start', async (ctx) => {
       const telegramId = ctx.from.id;
       const username = ctx.from.username || 'Unknown';
+      const firstName = ctx.from.first_name;
+      const lastName = ctx.from.last_name;
       const languageCode =
         ctx.from.language_code === 'ru' ? LanguageCode.ru : LanguageCode.en;
+
+      // Получаем фото профиля пользователя
+      let photoUrl: string | null = null;
+      try {
+        const userProfilePhotos = await ctx.api.getUserProfilePhotos(
+          telegramId,
+          { limit: 1 },
+        );
+
+        if (userProfilePhotos.photos.length > 0) {
+          const photo = userProfilePhotos.photos[0][0]; // Берем первое фото в наименьшем размере
+          const file = await ctx.api.getFile(photo.file_id);
+          photoUrl = `https://api.telegram.org/file/bot${this.token}/${file.file_path}`;
+          this.logger.log(`Got photo URL for user ${telegramId}: ${photoUrl}`);
+        }
+      } catch (error) {
+        this.logger.error(`Failed to get user photo for ${telegramId}:`, error);
+      }
 
       const keyboard = new InlineKeyboard().webApp(
         getMessage(languageCode, 'bot.buttonText'),
@@ -118,6 +138,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           where: { telegramId: telegramId.toString() },
           update: {
             username: username,
+            firstName: firstName,
+            lastName: lastName,
+            photoUrl: photoUrl,
             languageCode: languageCode,
             photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),
@@ -125,6 +148,9 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
           create: {
             telegramId: telegramId.toString(),
             username: username,
+            firstName: firstName,
+            lastName: lastName,
+            photoUrl: photoUrl,
             languageCode: languageCode,
             photo: photo,
             ...(shouldSetReferrer && { referredBy: referrerId }),

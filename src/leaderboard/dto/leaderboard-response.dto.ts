@@ -20,6 +20,13 @@ export class LeaderboardUserDto {
   username: string;
 
   @ApiProperty({
+    description: 'User photo URL',
+    example: 'https://t.me/i/userpic/320/username.jpg',
+    required: false,
+  })
+  photoUrl?: string;
+
+  @ApiProperty({
     description: 'Total number of spins (case openings)',
     example: 978,
   })

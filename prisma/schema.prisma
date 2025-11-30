@@ -62,7 +62,9 @@ model User {
   id           String          @id @default(uuid())
   telegramId   String          @unique
   username     String
-  photo        String?
+  firstName    String?         // Имя пользователя из Telegram
+  lastName     String?         // Фамилия пользователя из Telegram
+  photoUrl     String?         // URL аватарки пользователя
   languageCode LanguageCode
   balance      Decimal         @default(0)
   rating       Int             @default(0) // User's rank position based on balance

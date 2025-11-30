@@ -494,7 +494,7 @@ export class CaseService {
             throw new HttpException('Insufficient balance', 400);
           }
 
-          // 5. Decrement user balance with updateMany and gte check
+          // 5. Decrement user balance and update stats with updateMany and gte check
           const updateResult = await tx.user.updateMany({
             where: {
               id: userId,
@@ -506,6 +506,12 @@ export class CaseService {
               balance: {
                 decrement: totalCost,
               },
+              totalVolume: {
+                increment: totalCost,
+              },
+              totalSpins: {
+                increment: multiplier,
+              },
             },
           });
 
@@ -514,6 +520,16 @@ export class CaseService {
           }
 
           remainingBalance -= totalCost;
+        } else {
+          // For free cases, only update totalSpins
+          await tx.user.update({
+            where: { id: userId },
+            data: {
+              totalSpins: {
+                increment: multiplier,
+              },
+            },
+          });
         }
 
         // 6. Open cases multiple times based on multiplier
