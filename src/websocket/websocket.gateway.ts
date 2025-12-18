@@ -322,7 +322,9 @@ export class WebsocketGateway
 
       // Calculate crash time based on multiplier
       const crashMultiplier = Number(game.multiplier);
-      const crashTimeMs = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x (SYNCHRONIZED with frontend)
+      const MIN_CRASH_TIME_MS = 2000; // Minimum 2 seconds to prevent instant crashes
+      const calculatedCrashTime = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x
+      const crashTimeMs = Math.max(MIN_CRASH_TIME_MS, calculatedCrashTime); // Apply minimum
 
       this.logger.log(
         `💥 [Gateway] Game #${game.id} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s`,
@@ -387,7 +389,9 @@ export class WebsocketGateway
 
       // Calculate crash time based on multiplier
       const crashMultiplier = Number(game.multiplier);
-      const crashTimeMs = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x (SYNCHRONIZED with frontend)
+      const MIN_CRASH_TIME_MS = 2000; // Minimum 2 seconds to prevent instant crashes
+      const calculatedCrashTime = (crashMultiplier - 1.0) * 5000; // 5 seconds per 1.0x
+      const crashTimeMs = Math.max(MIN_CRASH_TIME_MS, calculatedCrashTime); // Apply minimum
 
       this.logger.log(
         `💥 [Gateway] Game #${gameId} will crash at ${crashMultiplier}x in ${Math.ceil(crashTimeMs / 1000)}s (${crashTimeMs}ms)`,

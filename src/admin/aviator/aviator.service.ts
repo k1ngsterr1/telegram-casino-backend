@@ -22,7 +22,7 @@ export interface AviatorSettings {
 export class AviatorService implements OnModuleInit {
   private readonly logger = new Logger(AviatorService.name);
   private aviatorSettings: AviatorSettings = {
-    minMultiplier: 1.0,
+    minMultiplier: 1.05,
     maxMultiplier: 100000,
     minBet: 25,
     maxBet: 10000,
