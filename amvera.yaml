@@ -1,0 +1,12 @@
+meta:
+  environment: nodejs
+  toolchain:
+    name: npm
+    version: 20
+
+build:
+  cmd: npm run build && npx prisma generate
+
+run:
+  cmd: npm run start:prod
+  containerPort: 3000
