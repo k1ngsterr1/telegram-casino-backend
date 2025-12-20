@@ -1,29 +1,38 @@
-# Base stage
-FROM node:20-alpine AS base
-RUN corepack enable && corepack prepare yarn@stable --activate
+# =========================
+# 1. Build stage
+# =========================
+FROM node:22-alpine AS builder
+
 WORKDIR /app
 
-# Dependencies stage
-FROM base AS deps
-COPY package.json yarn.lock* ./
-RUN yarn install --immutable
+# deps
+COPY package.json yarn.lock ./
+RUN yarn install --frozen-lockfile
 
-# Build stage
-FROM base AS builder
-COPY --from=deps /app/node_modules ./node_modules
+# source
 COPY . .
-RUN yarn prisma generate
+
+# prisma + build
+RUN yarn prisma:generate
 RUN yarn build
 
-# Production stage
-FROM base AS runner
+
+# =========================
+# 2. Runtime stage
+# =========================
+FROM node:22-alpine
+
+WORKDIR /app
 ENV NODE_ENV=production
 
-COPY --from=builder /app/dist ./dist
+# просто копируем готовое окружение
 COPY --from=builder /app/node_modules ./node_modules
-COPY --from=builder /app/package.json ./package.json
+COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/prisma ./prisma
+COPY package.json ./
 
-EXPOSE 3000
+# Create uploads directory
+RUN mkdir -p /app/uploads
 
-CMD ["yarn", "start:prod"]
+EXPOSE 6001
+CMD ["node", "dist/src/main.js"]
