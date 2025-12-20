@@ -10,7 +10,8 @@ import { Type } from 'class-transformer';
 
 export class SubscriptionItemDto {
   @ApiProperty({
-    description: 'Telegram chat/channel ID (username like @channelname or numeric ID)',
+    description:
+      'Telegram chat/channel ID (username like @channelname or numeric ID)',
     example: '@mychannel',
   })
   @IsString()

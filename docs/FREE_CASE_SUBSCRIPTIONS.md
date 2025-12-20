@@ -13,6 +13,7 @@ This feature allows you to configure free cases that require users to join speci
 ### Admin Endpoints (require admin authentication)
 
 #### Get Subscription Requirements
+
 ```
 GET /admin/system/subscriptions/requirements
 ```
@@ -20,6 +21,7 @@ GET /admin/system/subscriptions/requirements
 Returns the current list of required subscriptions with chat info.
 
 **Response:**
+
 ```json
 {
   "subscriptions": [
@@ -39,11 +41,13 @@ Returns the current list of required subscriptions with chat info.
 ```
 
 #### Update Subscription Requirements
+
 ```
 PUT /admin/system/subscriptions/requirements
 ```
 
 **Request Body:**
+
 ```json
 {
   "subscriptions": [
@@ -64,6 +68,7 @@ PUT /admin/system/subscriptions/requirements
 **Note:** The bot must be added as an admin to all specified chats/channels for verification to work.
 
 #### Verify Chat Access
+
 ```
 POST /admin/system/subscriptions/verify
 ```
@@ -71,6 +76,7 @@ POST /admin/system/subscriptions/verify
 Test if the bot can access a specific chat.
 
 **Request Body:**
+
 ```json
 {
   "chatId": "@mychannel"
@@ -78,6 +84,7 @@ Test if the bot can access a specific chat.
 ```
 
 **Response:**
+
 ```json
 {
   "isAccessible": true,
@@ -93,6 +100,7 @@ Test if the bot can access a specific chat.
 ### User Endpoints (require user authentication)
 
 #### Check Subscription Status
+
 ```
 GET /case/subscriptions/status
 ```
@@ -100,6 +108,7 @@ GET /case/subscriptions/status
 Returns the user's subscription status for all required groups/channels.
 
 **Response:**
+
 ```json
 {
   "subscriptions": [
@@ -121,6 +130,7 @@ Returns the user's subscription status for all required groups/channels.
 ```
 
 #### Check Free Case Cooldown (Enhanced)
+
 ```
 GET /case/:id/cooldown
 ```
@@ -128,6 +138,7 @@ GET /case/:id/cooldown
 Now includes subscription status in the response.
 
 **Response:**
+
 ```json
 {
   "canOpen": false,
@@ -147,6 +158,7 @@ Now includes subscription status in the response.
 ```
 
 **Note:** `canOpen` will be `false` if either:
+
 - The cooldown hasn't expired yet
 - Not all subscription requirements are met
 
@@ -157,9 +169,11 @@ Now includes subscription status in the response.
 The bot must be added as an **administrator** to each group or channel you want to require users to join. This is necessary for the bot to check user membership.
 
 For **channels**:
+
 - Add the bot as an admin with at least "See members" permission
 
 For **groups**:
+
 - Add the bot as an admin (no special permissions needed beyond basic admin)
 
 ### 2. Get Chat IDs
@@ -167,6 +181,7 @@ For **groups**:
 You can use chat usernames (e.g., `@mychannel`) or numeric IDs (e.g., `-1001234567890`).
 
 To get a chat's numeric ID:
+
 1. Add `@userinfobot` to your group/channel
 2. Forward any message from the group/channel to the bot
 3. The bot will reply with the chat ID
@@ -229,12 +244,12 @@ interface SubscriptionRequirement {
 
 // Fetch subscription status
 const response = await fetch('/case/subscriptions/status', {
-  headers: { Authorization: `Bearer ${token}` }
+  headers: { Authorization: `Bearer ${token}` },
 });
 const { subscriptions, allSubscriptionsMet } = await response.json();
 
 // Display to user
-subscriptions.forEach(sub => {
+subscriptions.forEach((sub) => {
   if (!sub.isSubscribed) {
     // Show "Subscribe" button with inviteLink
     console.log(`Please join ${sub.title}: ${sub.inviteLink}`);
@@ -248,34 +263,33 @@ subscriptions.forEach(sub => {
 async function openFreeCase(caseId: number) {
   // First check cooldown and subscription status
   const cooldownResponse = await fetch(`/case/${caseId}/cooldown`, {
-    headers: { Authorization: `Bearer ${token}` }
+    headers: { Authorization: `Bearer ${token}` },
   });
   const cooldown = await cooldownResponse.json();
-  
+
   if (!cooldown.allSubscriptionsMet) {
     // Show subscription requirements
-    const unsubscribed = cooldown.subscriptions
-      .filter(s => !s.isSubscribed);
-    
+    const unsubscribed = cooldown.subscriptions.filter((s) => !s.isSubscribed);
+
     showSubscriptionDialog(unsubscribed);
     return;
   }
-  
+
   if (!cooldown.canOpen) {
     showCooldownTimer(cooldown.secondsRemaining);
     return;
   }
-  
+
   // Open the case
   const result = await fetch(`/case/${caseId}/open`, {
     method: 'POST',
-    headers: { 
+    headers: {
       Authorization: `Bearer ${token}`,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
     },
-    body: JSON.stringify({ multiplier: 1 })
+    body: JSON.stringify({ multiplier: 1 }),
   });
-  
+
   // Handle result...
 }
 ```

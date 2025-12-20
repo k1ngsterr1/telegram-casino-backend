@@ -21,7 +21,10 @@ import { User } from '../shared/decorator/user.decorator';
 import { OpenCaseDto } from './dto/open-case.dto';
 import { GetCasesDto } from './dto/get-cases.dto';
 import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
-import { CaseResponseDto, SubscriptionRequirementDto } from './dto/case-response.dto';
+import {
+  CaseResponseDto,
+  SubscriptionRequirementDto,
+} from './dto/case-response.dto';
 
 @ApiTags('Cases')
 @Controller('case')
@@ -78,11 +81,13 @@ export class CaseController {
   @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
-    summary: 'Check free case cooldown timer and subscription status for authenticated user',
+    summary:
+      'Check free case cooldown timer and subscription status for authenticated user',
   })
   @ApiResponse({
     status: 200,
-    description: 'Returns cooldown status, remaining time, and subscription requirements',
+    description:
+      'Returns cooldown status, remaining time, and subscription requirements',
   })
   async checkCooldown(
     @Param('id', ParseIntPipe) caseId: number,

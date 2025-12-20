@@ -91,7 +91,8 @@ export class FreeCaseCooldownDto {
   canOpen: boolean;
 
   @ApiPropertyOptional({
-    description: 'Seconds remaining until case can be opened (null if can open)',
+    description:
+      'Seconds remaining until case can be opened (null if can open)',
     example: 3600,
   })
   secondsRemaining: number | null;

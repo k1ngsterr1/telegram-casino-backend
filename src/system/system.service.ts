@@ -235,7 +235,10 @@ export class SystemService {
         throw error;
       }
       this.logger.error('Failed to update subscription requirements', error);
-      throw new HttpException('Failed to update subscription requirements', 500);
+      throw new HttpException(
+        'Failed to update subscription requirements',
+        500,
+      );
     }
   }
 

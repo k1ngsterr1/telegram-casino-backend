@@ -9,7 +9,11 @@ import { PrismaService } from '../shared/services/prisma.service';
 import { BotService } from '../shared/services/bot.service';
 import { GetCasesDto, CaseSortBy } from './dto/get-cases.dto';
 import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
-import { CaseResponseDto, FreeCaseCooldownDto, SubscriptionRequirementDto } from './dto/case-response.dto';
+import {
+  CaseResponseDto,
+  FreeCaseCooldownDto,
+  SubscriptionRequirementDto,
+} from './dto/case-response.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { SystemKey } from '@prisma/client';
 
@@ -315,9 +319,7 @@ export class CaseService {
   /**
    * Check user's subscription status for all required chats
    */
-  async checkSubscriptionStatus(
-    telegramUserId: string,
-  ): Promise<{
+  async checkSubscriptionStatus(telegramUserId: string): Promise<{
     subscriptions: SubscriptionRequirementDto[];
     allSubscriptionsMet: boolean;
   }> {
