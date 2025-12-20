@@ -334,8 +334,11 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
     try {
       await this.prisma.ensureConnected();
 
-      // Hardcoded bot token
-      this.token = '8556587427:AAFe7KM2FMk4fhTKtCtCzsVhpXMjqxfKeH8';
+      // Get bot token from environment variable
+      this.token = this.configService.get<string>('TELEGRAM_BOT_TOKEN');
+      if (!this.token) {
+        throw new Error('TELEGRAM_BOT_TOKEN environment variable is not set');
+      }
 
       // Use production WebApp URL
       this.webAppUrl = 'https://gifty-realm-production.up.railway.app';
