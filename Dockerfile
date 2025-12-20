@@ -34,5 +34,5 @@ COPY package.json ./
 # Create uploads directory
 RUN mkdir -p /app/uploads
 
-EXPOSE 6001
+EXPOSE 80
 CMD ["node", "dist/src/main.js"]
