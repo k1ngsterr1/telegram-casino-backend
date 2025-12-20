@@ -6,7 +6,7 @@ WORKDIR /app
 # Dependencies stage
 FROM base AS deps
 COPY package.json yarn.lock* ./
-RUN yarn install --frozen-lockfile
+RUN yarn install --immutable
 
 # Build stage
 FROM base AS builder
