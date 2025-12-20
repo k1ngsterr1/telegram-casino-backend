@@ -6,10 +6,19 @@ import {
   forwardRef,
 } from '@nestjs/common';
 import { PrismaService } from '../shared/services/prisma.service';
+import { BotService } from '../shared/services/bot.service';
 import { GetCasesDto, CaseSortBy } from './dto/get-cases.dto';
 import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
-import { CaseResponseDto, FreeCaseCooldownDto } from './dto/case-response.dto';
+import { CaseResponseDto, FreeCaseCooldownDto, SubscriptionRequirementDto } from './dto/case-response.dto';
 import { Cron, CronExpression } from '@nestjs/schedule';
+import { SystemKey } from '@prisma/client';
+
+// Interface for subscription configuration
+interface SubscriptionConfig {
+  chatId: string;
+  title: string;
+  inviteLink?: string;
+}
 
 @Injectable()
 export class CaseService {
@@ -20,7 +29,10 @@ export class CaseService {
   private readonly FREE_CASE_COOLDOWN_MS = 24 * 60 * 60 * 1000; // 24 hours
   private websocketGateway: any; // Will be set by WebsocketGateway
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly botService: BotService,
+  ) {}
 
   /**
    * Set WebSocket gateway reference (called by WebsocketGateway)
@@ -279,6 +291,70 @@ export class CaseService {
   }
 
   /**
+   * Get subscription requirements from system settings
+   */
+  private async getSubscriptionRequirements(): Promise<SubscriptionConfig[]> {
+    try {
+      const config = await this.prisma.system.findUnique({
+        where: { key: SystemKey.FREE_CASE_SUBSCRIPTIONS },
+        select: { value: true },
+      });
+
+      if (!config || !config.value) {
+        return [];
+      }
+
+      const parsed = JSON.parse(config.value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch (error) {
+      this.logger.error('Failed to parse subscription requirements', error);
+      return [];
+    }
+  }
+
+  /**
+   * Check user's subscription status for all required chats
+   */
+  async checkSubscriptionStatus(
+    telegramUserId: string,
+  ): Promise<{
+    subscriptions: SubscriptionRequirementDto[];
+    allSubscriptionsMet: boolean;
+  }> {
+    const requirements = await this.getSubscriptionRequirements();
+
+    if (requirements.length === 0) {
+      return {
+        subscriptions: [],
+        allSubscriptionsMet: true,
+      };
+    }
+
+    const subscriptions: SubscriptionRequirementDto[] = [];
+
+    for (const req of requirements) {
+      const membership = await this.botService.checkChatMembership(
+        req.chatId,
+        telegramUserId,
+      );
+
+      subscriptions.push({
+        chatId: req.chatId,
+        title: membership.chatTitle || req.title,
+        isSubscribed: membership.isMember,
+        inviteLink: req.inviteLink,
+      });
+    }
+
+    const allSubscriptionsMet = subscriptions.every((s) => s.isSubscribed);
+
+    return {
+      subscriptions,
+      allSubscriptionsMet,
+    };
+  }
+
+  /**
    * Check free case cooldown for a user
    */
   async checkFreeCaseCooldown(
@@ -300,6 +376,21 @@ export class CaseService {
         throw new HttpException('This is not a free case', 400);
       }
 
+      // Get user's telegram ID for subscription check
+      const user = await this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { telegramId: true },
+      });
+
+      if (!user) {
+        throw new HttpException('User not found', 404);
+      }
+
+      // Check subscription requirements
+      const subscriptionStatus = await this.checkSubscriptionStatus(
+        user.telegramId,
+      );
+
       // Find the most recent opening of this case by the user
       const lastOpening = await this.prisma.inventoryItem.findFirst({
         where: {
@@ -317,10 +408,12 @@ export class CaseService {
       if (!lastOpening) {
         // User has never opened this case
         return {
-          canOpen: true,
+          canOpen: subscriptionStatus.allSubscriptionsMet,
           secondsRemaining: null,
           lastOpenedAt: null,
           nextAvailableAt: null,
+          subscriptions: subscriptionStatus.subscriptions,
+          allSubscriptionsMet: subscriptionStatus.allSubscriptionsMet,
         };
       }
 
@@ -334,10 +427,12 @@ export class CaseService {
       if (timeDiff <= 0) {
         // Cooldown has passed
         return {
-          canOpen: true,
+          canOpen: subscriptionStatus.allSubscriptionsMet,
           secondsRemaining: null,
           lastOpenedAt,
           nextAvailableAt: null,
+          subscriptions: subscriptionStatus.subscriptions,
+          allSubscriptionsMet: subscriptionStatus.allSubscriptionsMet,
         };
       }
 
@@ -347,6 +442,8 @@ export class CaseService {
         secondsRemaining: Math.ceil(timeDiff / 1000),
         lastOpenedAt,
         nextAvailableAt,
+        subscriptions: subscriptionStatus.subscriptions,
+        allSubscriptionsMet: subscriptionStatus.allSubscriptionsMet,
       };
     } catch (error) {
       if (error instanceof HttpException) {
@@ -398,7 +495,7 @@ export class CaseService {
   /**
    * Open a case for a user (with multiplier support)
    * - Validates case exists and has items
-   * - For free cases: validates 24h cooldown
+   * - For free cases: validates 24h cooldown and subscription requirements
    * - For paid cases: validates user has sufficient balance
    * - Selects prizes based on weighted random for each opening
    * - Decrements user balance (if paid case)
@@ -407,6 +504,45 @@ export class CaseService {
    */
   async openCase(caseId: number, userId: string, multiplier: number) {
     try {
+      // First, check subscription requirements for free cases (outside transaction)
+      const caseCheck = await this.prisma.case.findUnique({
+        where: { id: caseId },
+        select: { price: true },
+      });
+
+      if (!caseCheck) {
+        throw new HttpException('Case not found', 404);
+      }
+
+      const isFreeCase = caseCheck.price === 0;
+
+      // For free cases, verify subscription requirements before opening
+      if (isFreeCase) {
+        const user = await this.prisma.user.findUnique({
+          where: { id: userId },
+          select: { telegramId: true },
+        });
+
+        if (!user) {
+          throw new HttpException('User not found', 404);
+        }
+
+        const subscriptionStatus = await this.checkSubscriptionStatus(
+          user.telegramId,
+        );
+
+        if (!subscriptionStatus.allSubscriptionsMet) {
+          const unsubscribed = subscriptionStatus.subscriptions
+            .filter((s) => !s.isSubscribed)
+            .map((s) => s.title)
+            .join(', ');
+          throw new HttpException(
+            `You must subscribe to the following to open this free case: ${unsubscribed}`,
+            403,
+          );
+        }
+      }
+
       // Execute everything in a transaction
       const result = await this.prisma.$transaction(async (tx) => {
         // 1. Fetch case with items and prizes

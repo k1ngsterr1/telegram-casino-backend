@@ -2,6 +2,7 @@ import {
   Controller,
   Get,
   Put,
+  Post,
   Body,
   Param,
   UseGuards,
@@ -17,6 +18,10 @@ import { SystemService } from './system.service';
 import { UpdateBotTokenDto } from './dto/update-bot-token.dto';
 import { UpdateWebAppUrlDto } from './dto/update-webapp-url.dto';
 import { UpdateDepositSettingsDto } from './dto/update-deposit-settings.dto';
+import {
+  UpdateSubscriptionsDto,
+  VerifySubscriptionDto,
+} from './dto/update-subscriptions.dto';
 import { AdminGuard } from '../shared/guards/admin.guard';
 import { AuthGuard } from '@nestjs/passport';
 
@@ -65,5 +70,35 @@ export class SystemController {
   })
   async updateDepositSettings(@Body() dto: UpdateDepositSettingsDto) {
     return this.systemService.updateDepositSettings(dto);
+  }
+
+  @Get('subscriptions/requirements')
+  @ApiOperation({ summary: 'Get free case subscription requirements' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns current subscription requirements for free cases',
+  })
+  async getSubscriptionRequirements() {
+    return this.systemService.getSubscriptionRequirements();
+  }
+
+  @Put('subscriptions/requirements')
+  @ApiOperation({ summary: 'Update free case subscription requirements' })
+  @ApiResponse({
+    status: 200,
+    description: 'Subscription requirements updated successfully',
+  })
+  async updateSubscriptionRequirements(@Body() dto: UpdateSubscriptionsDto) {
+    return this.systemService.updateSubscriptionRequirements(dto.subscriptions);
+  }
+
+  @Post('subscriptions/verify')
+  @ApiOperation({ summary: 'Verify bot access to a chat/channel' })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns whether bot can access the specified chat',
+  })
+  async verifyChatAccess(@Body() dto: VerifySubscriptionDto) {
+    return this.systemService.verifyChatAccess(dto.chatId);
   }
 }

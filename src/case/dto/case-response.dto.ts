@@ -57,6 +57,32 @@ export class CaseResponseDto {
   createdAt: Date;
 }
 
+export class SubscriptionRequirementDto {
+  @ApiProperty({
+    description: 'Telegram chat/channel ID',
+    example: '@mychannel',
+  })
+  chatId: string;
+
+  @ApiProperty({
+    description: 'Chat/channel title',
+    example: 'My Awesome Channel',
+  })
+  title: string;
+
+  @ApiProperty({
+    description: 'Whether user is subscribed',
+    example: true,
+  })
+  isSubscribed: boolean;
+
+  @ApiPropertyOptional({
+    description: 'Invite link to the chat/channel',
+    example: 'https://t.me/mychannel',
+  })
+  inviteLink?: string;
+}
+
 export class FreeCaseCooldownDto {
   @ApiProperty({
     description: 'Whether user can open the free case',
@@ -81,4 +107,16 @@ export class FreeCaseCooldownDto {
     example: '2025-01-02T00:00:00.000Z',
   })
   nextAvailableAt: Date | null;
+
+  @ApiPropertyOptional({
+    description: 'Subscription requirements status (only for free cases)',
+    type: [SubscriptionRequirementDto],
+  })
+  subscriptions?: SubscriptionRequirementDto[];
+
+  @ApiPropertyOptional({
+    description: 'Whether all subscription requirements are met',
+    example: true,
+  })
+  allSubscriptionsMet?: boolean;
 }

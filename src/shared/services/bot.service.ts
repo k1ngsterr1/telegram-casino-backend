@@ -484,4 +484,114 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       // Don't throw - message sending shouldn't block the main flow
     }
   }
+
+  /**
+   * Check if a user is a member of a Telegram chat/group/channel
+   * @param chatId - The chat ID or username (e.g., "@channelname" or "-1001234567890")
+   * @param telegramUserId - The Telegram user ID to check
+   * @returns Object with isMember status and member details
+   */
+  async checkChatMembership(
+    chatId: string,
+    telegramUserId: string,
+  ): Promise<{
+    isMember: boolean;
+    status: string;
+    chatTitle?: string;
+  }> {
+    try {
+      const member = await this.bot.api.getChatMember(
+        chatId,
+        parseInt(telegramUserId),
+      );
+
+      // Valid member statuses: 'creator', 'administrator', 'member', 'restricted' (with is_member=true)
+      // Invalid statuses: 'left', 'kicked', 'restricted' (with is_member=false)
+      const isMember =
+        member.status === 'creator' ||
+        member.status === 'administrator' ||
+        member.status === 'member' ||
+        (member.status === 'restricted' && member.is_member === true);
+
+      // Get chat info for the title
+      let chatTitle: string | undefined;
+      try {
+        const chatInfo = await this.bot.api.getChat(chatId);
+        chatTitle = 'title' in chatInfo ? chatInfo.title : undefined;
+      } catch {
+        // Ignore errors getting chat title
+      }
+
+      return {
+        isMember,
+        status: member.status,
+        chatTitle,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to check chat membership for user ${telegramUserId} in ${chatId}: ${error}`,
+      );
+      // If we can't check (e.g., bot not in chat), return not a member
+      return {
+        isMember: false,
+        status: 'unknown',
+      };
+    }
+  }
+
+  /**
+   * Check multiple chat memberships for a user
+   * @param chatIds - Array of chat IDs to check
+   * @param telegramUserId - The Telegram user ID to check
+   * @returns Array of membership statuses for each chat
+   */
+  async checkMultipleChatMemberships(
+    chatIds: string[],
+    telegramUserId: string,
+  ): Promise<
+    Array<{
+      chatId: string;
+      isMember: boolean;
+      status: string;
+      chatTitle?: string;
+    }>
+  > {
+    const results = await Promise.all(
+      chatIds.map(async (chatId) => {
+        const result = await this.checkChatMembership(chatId, telegramUserId);
+        return {
+          chatId,
+          ...result,
+        };
+      }),
+    );
+    return results;
+  }
+
+  /**
+   * Get chat info by ID or username
+   * @param chatId - The chat ID or username
+   * @returns Chat information
+   */
+  async getChatInfo(chatId: string): Promise<{
+    id: number;
+    title?: string;
+    type: string;
+    username?: string;
+    inviteLink?: string;
+  } | null> {
+    try {
+      const chat = await this.bot.api.getChat(chatId);
+      return {
+        id: chat.id,
+        title: 'title' in chat ? chat.title : undefined,
+        type: chat.type,
+        username: 'username' in chat ? chat.username : undefined,
+        inviteLink: 'invite_link' in chat ? chat.invite_link : undefined,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to get chat info for ${chatId}: ${error}`);
+      return null;
+    }
+  }
 }

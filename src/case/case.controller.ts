@@ -21,7 +21,7 @@ import { User } from '../shared/decorator/user.decorator';
 import { OpenCaseDto } from './dto/open-case.dto';
 import { GetCasesDto } from './dto/get-cases.dto';
 import { GetCasesCursorDto } from './dto/get-cases-cursor.dto';
-import { CaseResponseDto } from './dto/case-response.dto';
+import { CaseResponseDto, SubscriptionRequirementDto } from './dto/case-response.dto';
 
 @ApiTags('Cases')
 @Controller('case')
@@ -48,6 +48,21 @@ export class CaseController {
     return this.caseService.findAllCursor(getCasesCursorDto);
   }
 
+  @Get('subscriptions/status')
+  @UseGuards(AuthGuard('jwt'), UserGuard)
+  @ApiBearerAuth('JWT')
+  @ApiOperation({
+    summary: 'Check subscription status for free case requirements',
+  })
+  @ApiResponse({
+    status: 200,
+    description: 'Returns subscription status for each required chat/channel',
+    type: [SubscriptionRequirementDto],
+  })
+  async checkSubscriptionStatus(@User('telegramId') telegramId: string) {
+    return this.caseService.checkSubscriptionStatus(telegramId);
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get case by ID with detailed items' })
   @ApiResponse({
@@ -63,11 +78,11 @@ export class CaseController {
   @UseGuards(AuthGuard('jwt'), UserGuard)
   @ApiBearerAuth('JWT')
   @ApiOperation({
-    summary: 'Check free case cooldown timer for authenticated user',
+    summary: 'Check free case cooldown timer and subscription status for authenticated user',
   })
   @ApiResponse({
     status: 200,
-    description: 'Returns cooldown status and remaining time',
+    description: 'Returns cooldown status, remaining time, and subscription requirements',
   })
   async checkCooldown(
     @Param('id', ParseIntPipe) caseId: number,

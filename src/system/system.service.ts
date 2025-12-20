@@ -150,4 +150,117 @@ export class SystemService {
       throw new HttpException('Failed to update deposit settings', 500);
     }
   }
+
+  /**
+   * Get current free case subscription requirements
+   */
+  async getSubscriptionRequirements() {
+    try {
+      const config = await this.prisma.system.findUnique({
+        where: { key: SystemKey.FREE_CASE_SUBSCRIPTIONS },
+        select: { value: true },
+      });
+
+      if (!config || !config.value) {
+        return { subscriptions: [] };
+      }
+
+      const subscriptions = JSON.parse(config.value);
+
+      // Enrich with chat info from Telegram
+      const enrichedSubscriptions = await Promise.all(
+        subscriptions.map(async (sub: any) => {
+          const chatInfo = await this.botService.getChatInfo(sub.chatId);
+          return {
+            ...sub,
+            chatInfo,
+          };
+        }),
+      );
+
+      return { subscriptions: enrichedSubscriptions };
+    } catch (error) {
+      this.logger.error('Failed to get subscription requirements', error);
+      throw new HttpException('Failed to get subscription requirements', 500);
+    }
+  }
+
+  /**
+   * Update free case subscription requirements
+   */
+  async updateSubscriptionRequirements(
+    subscriptions: Array<{
+      chatId: string;
+      title: string;
+      inviteLink?: string;
+    }>,
+  ) {
+    try {
+      // Validate that bot can access all chats
+      const validationResults = await Promise.all(
+        subscriptions.map(async (sub) => {
+          const chatInfo = await this.botService.getChatInfo(sub.chatId);
+          return {
+            chatId: sub.chatId,
+            isValid: chatInfo !== null,
+            chatInfo,
+          };
+        }),
+      );
+
+      const invalidChats = validationResults.filter((r) => !r.isValid);
+      if (invalidChats.length > 0) {
+        const invalidIds = invalidChats.map((r) => r.chatId).join(', ');
+        throw new HttpException(
+          `Bot cannot access the following chats: ${invalidIds}. Make sure the bot is added as an admin to these chats/channels.`,
+          400,
+        );
+      }
+
+      const updated = await this.prisma.system.upsert({
+        where: { key: SystemKey.FREE_CASE_SUBSCRIPTIONS },
+        update: { value: JSON.stringify(subscriptions) },
+        create: {
+          key: SystemKey.FREE_CASE_SUBSCRIPTIONS,
+          value: JSON.stringify(subscriptions),
+        },
+      });
+
+      return {
+        key: updated.key,
+        subscriptions: JSON.parse(updated.value),
+      };
+    } catch (error) {
+      if (error instanceof HttpException) {
+        throw error;
+      }
+      this.logger.error('Failed to update subscription requirements', error);
+      throw new HttpException('Failed to update subscription requirements', 500);
+    }
+  }
+
+  /**
+   * Verify a single chat/channel is accessible by the bot
+   */
+  async verifyChatAccess(chatId: string) {
+    try {
+      const chatInfo = await this.botService.getChatInfo(chatId);
+
+      if (!chatInfo) {
+        return {
+          isAccessible: false,
+          message:
+            'Bot cannot access this chat. Make sure the bot is added as an admin to the chat/channel.',
+        };
+      }
+
+      return {
+        isAccessible: true,
+        chatInfo,
+      };
+    } catch (error) {
+      this.logger.error(`Failed to verify chat access for ${chatId}`, error);
+      throw new HttpException('Failed to verify chat access', 500);
+    }
+  }
 }
