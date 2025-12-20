@@ -2,8 +2,10 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { BadRequestException, Logger, ValidationPipe } from '@nestjs/common';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { setDefaultResultOrder } from 'dns';
 
 async function bootstrap() {
+  setDefaultResultOrder('ipv4first');
   const NODE_ENV = process.env.NODE_ENV;
   const app = await NestFactory.create(AppModule);
   const logger = new Logger('Bootstrap');
