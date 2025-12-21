@@ -341,7 +341,7 @@ export class BotService implements OnModuleInit, OnModuleDestroy {
       }
 
       // Use production WebApp URL
-      this.webAppUrl = 'https://gifty-realm-production.up.railway.app';
+      this.webAppUrl = 'https://easycase.online';
 
       this.bot = new Bot(this.token);
 
