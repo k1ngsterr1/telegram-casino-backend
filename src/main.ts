@@ -19,6 +19,8 @@ async function bootstrap() {
       'https://gifty-realm-production.up.railway.app',
       'http://localhost:3000',
       'https://casino-admin-panel-production.up.railway.app',
+      'https://easycase.online',
+      'https://admin.easycase.online',
     ],
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
     allowedHeaders: [
