@@ -35,4 +35,5 @@ COPY package.json ./
 RUN mkdir -p /app/uploads
 
 EXPOSE 80
+ENV PORT=80
 CMD ["node", "dist/src/main.js"]
