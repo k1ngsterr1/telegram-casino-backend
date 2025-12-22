@@ -16,9 +16,7 @@ async function bootstrap() {
   // commit
   app.enableCors({
     origin: [
-      'https://gifty-realm-production.up.railway.app',
       'http://localhost:3000',
-      'https://casino-admin-panel-production.up.railway.app',
       'https://easycase.online',
       'https://admin.easycase.online',
     ],

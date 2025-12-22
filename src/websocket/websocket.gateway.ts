@@ -22,7 +22,7 @@ import { WsJwtGuard } from './guards/ws-jwt.guard';
 
 @WebSocketGateway({
   cors: {
-    origin: ['https://gifty-realm-production.up.railway.app'],
+    origin: ['https://easycase.online'],
     credentials: true,
   },
   namespace: '/ws',
