@@ -43,6 +43,7 @@ export class AdminCaseService {
         data: {
           name: createCaseDto.name,
           price: createCaseDto.price,
+          isFree: createCaseDto.isFree ?? false,
           preview: createCaseDto.preview,
           items: {
             create: createCaseDto.items.map((item) => ({
@@ -177,6 +178,7 @@ export class AdminCaseService {
           data: {
             name: updateCaseDto.name,
             price: updateCaseDto.price,
+            isFree: updateCaseDto.isFree,
             preview: updateCaseDto.preview,
             items: {
               create: updateCaseDto.items.map((item) => ({
@@ -202,6 +204,7 @@ export class AdminCaseService {
           data: {
             name: updateCaseDto.name,
             price: updateCaseDto.price,
+            isFree: updateCaseDto.isFree,
             preview: updateCaseDto.preview,
           },
           include: {

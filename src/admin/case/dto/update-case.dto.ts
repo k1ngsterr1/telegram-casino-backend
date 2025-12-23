@@ -7,6 +7,7 @@ import {
   IsArray,
   ValidateNested,
   ArrayMinSize,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiPropertyOptional } from '@nestjs/swagger';
@@ -45,6 +46,14 @@ export class UpdateCaseDto {
   @IsInt()
   @Min(0)
   price?: number;
+
+  @ApiPropertyOptional({
+    description: 'Whether the case is free',
+    example: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isFree?: boolean;
 
   @ApiPropertyOptional({
     description: 'Case preview image URL',

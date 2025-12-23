@@ -6,6 +6,8 @@ import {
   IsArray,
   ValidateNested,
   ArrayMinSize,
+  IsOptional,
+  IsBoolean,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { ApiProperty } from '@nestjs/swagger';
@@ -38,6 +40,15 @@ export class CreateCaseDto {
   @IsInt()
   @Min(0)
   price: number;
+
+  @ApiProperty({
+    description: 'Whether the case is free (optional, defaults to false)',
+    example: false,
+    required: false,
+  })
+  @IsOptional()
+  @IsBoolean()
+  isFree?: boolean;
 
   @ApiProperty({
     description: 'Case preview image URL',
