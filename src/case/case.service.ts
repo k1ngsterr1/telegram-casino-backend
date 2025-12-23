@@ -70,6 +70,7 @@ export class CaseService {
         id: true,
         name: true,
         price: true,
+        isFree: true,
         preview: true,
         createdAt: true,
       },
@@ -83,7 +84,7 @@ export class CaseService {
       name: c.name,
       price: c.price,
       preview: c.preview,
-      isFree: c.price === 0,
+      isFree: c.isFree,
       createdAt: c.createdAt,
     }));
 
@@ -270,7 +271,7 @@ export class CaseService {
         name: caseData.name,
         price: caseData.price,
         preview: caseData.preview,
-        isFree: caseData.price === 0,
+        isFree: caseData.isFree,
         items: caseData.items.map((item) => ({
           id: item.id,
           name: item.name,
@@ -367,14 +368,14 @@ export class CaseService {
       // Verify case exists and is free
       const caseData = await this.prisma.case.findUnique({
         where: { id: caseId },
-        select: { id: true, price: true },
+        select: { id: true, isFree: true },
       });
 
       if (!caseData) {
         throw new HttpException('Case not found', 404);
       }
 
-      if (caseData.price !== 0) {
+      if (!caseData.isFree) {
         throw new HttpException('This is not a free case', 400);
       }
 
@@ -509,14 +510,14 @@ export class CaseService {
       // First, check subscription requirements for free cases (outside transaction)
       const caseCheck = await this.prisma.case.findUnique({
         where: { id: caseId },
-        select: { price: true },
+        select: { isFree: true },
       });
 
       if (!caseCheck) {
         throw new HttpException('Case not found', 404);
       }
 
-      const isFreeCase = caseCheck.price === 0;
+      const isFreeCase = caseCheck.isFree;
 
       // For free cases, verify subscription requirements before opening
       if (isFreeCase) {
@@ -567,7 +568,7 @@ export class CaseService {
           throw new HttpException('Case has no items configured', 400);
         }
 
-        const isFreeCase = caseData.price === 0;
+        const isFreeCase = caseData.isFree;
 
         // 2. For free cases, check 24h cooldown
         if (isFreeCase) {

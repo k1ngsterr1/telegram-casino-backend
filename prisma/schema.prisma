@@ -225,6 +225,7 @@ model Case {
   id      Int        @id @default(autoincrement())
   name    String
   price   Int
+  isFree  Boolean    @default(false)
   preview String
   items   CaseItem[] @relation("CaseItems")
   inventoryItems InventoryItem[] @relation("InventoryCase")
