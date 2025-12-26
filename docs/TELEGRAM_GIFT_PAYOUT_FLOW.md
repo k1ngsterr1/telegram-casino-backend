@@ -5,6 +5,7 @@ This document describes the complete flow for how users receive Telegram gifts t
 ## Overview
 
 The gift system allows users to:
+
 1. Send gifts to the casino bot
 2. Have gifts added to their inventory
 3. Request payout of gifts back to their Telegram account
@@ -67,15 +68,15 @@ User sends gift to bot          Bot receives & stores gift
 
 ## Status Flow
 
-| Status | Description |
-|--------|-------------|
-| `PENDING` | Gift received by bot, not yet processed |
-| `IN_INVENTORY` | Gift converted to user's casino inventory |
-| `PAYOUT_REQUESTED` | User requested to receive the gift in Telegram |
-| `PAYOUT_APPROVED` | Admin approved, purchase in progress |
-| `PAID_OUT` | Gift successfully purchased and sent to user |
-| `SOLD` | User sold the gift for balance (alternative path) |
-| `FAILED` | Payout/transfer failed |
+| Status             | Description                                       |
+| ------------------ | ------------------------------------------------- |
+| `PENDING`          | Gift received by bot, not yet processed           |
+| `IN_INVENTORY`     | Gift converted to user's casino inventory         |
+| `PAYOUT_REQUESTED` | User requested to receive the gift in Telegram    |
+| `PAYOUT_APPROVED`  | Admin approved, purchase in progress              |
+| `PAID_OUT`         | Gift successfully purchased and sent to user      |
+| `SOLD`             | User sold the gift for balance (alternative path) |
+| `FAILED`           | Payout/transfer failed                            |
 
 ---
 
@@ -98,6 +99,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Get all gifts for a specific user
 
 **Response:**
+
 ```json
 {
   "gifts": [
@@ -122,6 +124,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Admin converts a pending gift to user's inventory
 
 **Request Body:**
+
 ```json
 {
   "giftId": 1,
@@ -130,6 +133,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -149,6 +153,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** User requests to receive a gift in their Telegram account
 
 **Request Body:**
+
 ```json
 {
   "giftId": 1,
@@ -157,6 +162,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -170,6 +176,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Validations:**
+
 - Gift must be in `IN_INVENTORY` status
 - Gift must have `starGiftId` or `starGiftSlug` for purchasing
 
@@ -180,6 +187,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Get all gifts awaiting payout approval
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -208,6 +216,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Check if a gift can still be purchased from Telegram marketplace
 
 **Request Body:**
+
 ```json
 {
   "starGiftId": "5000000001"
@@ -215,6 +224,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response (Success):**
+
 ```json
 {
   "success": true,
@@ -229,6 +239,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response (Unavailable):**
+
 ```json
 {
   "success": false,
@@ -247,6 +258,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Admin approves payout - bot purchases and sends gift to user
 
 **Request Body:**
+
 ```json
 {
   "giftId": 1
@@ -254,6 +266,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response (Success):**
+
 ```json
 {
   "success": true,
@@ -267,6 +280,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **What happens internally:**
+
 1. Validates gift is in `PAYOUT_REQUESTED` status
 2. Checks gift availability via `validateGiftCanBeSent()`
 3. Updates status to `PAYOUT_APPROVED`
@@ -283,6 +297,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Get all gifts available for purchase from Telegram marketplace
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -308,6 +323,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 **Description:** Purchase and send a gift directly without existing gift record
 
 **Request Body:**
+
 ```json
 {
   "targetTelegramId": "123456789",
@@ -316,6 +332,7 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ```
 
 **Response:**
+
 ```json
 {
   "success": true,
@@ -332,17 +349,20 @@ The bot automatically receives gifts via the Telegram userbot service. When a us
 ## Complete User Journey Example
 
 ### Step 1: User Sends Gift to Bot
+
 ```
 User opens Telegram → Sends a Star Gift (100 stars) to @CasinoBot
 ```
 
 ### Step 2: Bot Processes Gift
+
 ```
 Bot receives gift → Extracts starGiftId → Saves to database
 Gift status: PENDING
 ```
 
 ### Step 3: Admin Adds to Inventory
+
 ```
 Admin Panel → Gifts → Select gift → "Convert to Inventory"
 POST /admin/gift/convert-to-inventory { giftId: 1, userId: "..." }
@@ -350,6 +370,7 @@ Gift status: IN_INVENTORY
 ```
 
 ### Step 4: User Plays and Wants Payout
+
 ```
 User opens casino → Goes to inventory → Clicks "Withdraw" on gift
 POST /gift/request-payout { giftId: 1, targetTelegramId: "123456789" }
@@ -357,12 +378,14 @@ Gift status: PAYOUT_REQUESTED
 ```
 
 ### Step 5: Admin Reviews Request
+
 ```
 Admin Panel → Payout Requests → See pending request
 GET /admin/gift/payout-requests
 ```
 
 ### Step 6: Admin Validates Availability
+
 ```
 Admin Panel → Click "Validate" button
 POST /admin/gift/validate-gift { starGiftId: "5000000001" }
@@ -370,6 +393,7 @@ Response: { canSend: true, starsRequired: 100 }
 ```
 
 ### Step 7: Admin Approves
+
 ```
 Admin Panel → Click "Approve" button
 POST /admin/gift/approve-payout { giftId: 1 }
@@ -379,6 +403,7 @@ Gift status: PAID_OUT
 ```
 
 ### Step 8: User Receives Gift
+
 ```
 User receives notification in Telegram
 "You received a gift from @CasinoBot!"
@@ -390,18 +415,19 @@ User receives notification in Telegram
 
 ### Common Errors
 
-| Error | Cause | Resolution |
-|-------|-------|------------|
-| "Gift not found" | Invalid gift ID | Check gift exists |
-| "Gift is not in IN_INVENTORY status" | Wrong status for payout | Ensure gift is in inventory |
-| "Gift is sold out" | Telegram marketplace sold out | Cannot fulfill, refund user |
-| "Gift is locked and cannot be purchased" | Gift restricted | Cannot fulfill, refund user |
-| "Insufficient stars balance" | Bot has no stars | Add stars to bot account |
-| "No starGiftId available" | Missing catalog ID | Cannot determine which gift to buy |
+| Error                                    | Cause                         | Resolution                         |
+| ---------------------------------------- | ----------------------------- | ---------------------------------- |
+| "Gift not found"                         | Invalid gift ID               | Check gift exists                  |
+| "Gift is not in IN_INVENTORY status"     | Wrong status for payout       | Ensure gift is in inventory        |
+| "Gift is sold out"                       | Telegram marketplace sold out | Cannot fulfill, refund user        |
+| "Gift is locked and cannot be purchased" | Gift restricted               | Cannot fulfill, refund user        |
+| "Insufficient stars balance"             | Bot has no stars              | Add stars to bot account           |
+| "No starGiftId available"                | Missing catalog ID            | Cannot determine which gift to buy |
 
 ### Failed Payout Recovery
 
 If a payout fails:
+
 1. Status changes to `FAILED`
 2. `payoutError` field contains error message
 3. Admin can retry or refund the user manually
