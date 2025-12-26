@@ -88,6 +88,8 @@ export class GiftService {
         isAnonymous,
         receivedAt: message.date ? new Date(message.date * 1000) : new Date(),
         rawMessage: message,
+        // Store the message ID for later use with inputSavedStarGiftUser
+        savedMsgId: message.id,
       };
 
       if (isUniqueGift) {
@@ -99,18 +101,27 @@ export class GiftService {
           nftNumber: gift.num ? `#${gift.num}` : null,
           nftTotalCount: gift.totalCount?.toString() || null,
           nftAttributes: gift.attributes || null,
+          // For unique gifts, store the slug for inputSavedStarGiftSlug
+          starGiftSlug: gift.slug || null,
+          // Store the gift_id (id field from starGiftUnique)
+          starGiftId: gift.id?.toString() || gift.giftId?.toString() || null,
         };
 
         this.logger.log(
-          `Processing NFT gift: ${gift.title || 'Unknown'} #${gift.num} for user ${receiverTelegramId}`,
+          `Processing NFT gift: ${gift.title || 'Unknown'} #${gift.num} (giftId: ${gift.id}, slug: ${gift.slug}) for user ${receiverTelegramId}`,
         );
       } else {
         // Regular star gift
         const starsValue = action.stars || 0;
+        const gift = action.gift || {};
+
         giftData.starsValue = starsValue;
+        // Store the starGift.id - this is crucial for sending the gift via inputInvoiceStarGift
+        giftData.starGiftId =
+          gift.id?.toString() || action.giftId?.toString() || null;
 
         this.logger.log(
-          `Processing star gift: ${starsValue} stars for user ${receiverTelegramId}`,
+          `Processing star gift: ${starsValue} stars (giftId: ${gift.id}) for user ${receiverTelegramId}`,
         );
       }
 
@@ -134,9 +145,7 @@ export class GiftService {
       });
 
       // Save gift record with reference to inventory item
-      giftData.status = 'CONVERTED';
-      giftData.convertedAt = new Date();
-      giftData.convertedValue = prize.amount;
+      giftData.status = 'IN_INVENTORY';
       giftData.inventoryItemId = inventoryItem.id;
 
       const savedGift = await this.prisma.telegramGift.create({
@@ -218,8 +227,7 @@ export class GiftService {
   }
 
   /**
-   * Convert a Telegram gift to a Prize that can be used in cases/payouts
-   * DEPRECATED: Use convertGiftToInventoryItem instead
+   * Create a prize from a gift (admin only)
    */
   async convertGiftToPrize(giftId: number): Promise<any> {
     try {
@@ -231,11 +239,11 @@ export class GiftService {
         throw new HttpException('Gift not found', 404);
       }
 
-      if (gift.convertedAt) {
-        throw new HttpException('Gift already converted', 400);
+      if (gift.status !== 'PENDING') {
+        throw new HttpException('Gift is not in PENDING status', 400);
       }
 
-      // Create a prize from the gift
+      // Create a prize for this gift
       const prize = await this.prisma.prize.create({
         data: {
           name: gift.nftTitle || `Telegram Gift #${gift.id}`,
@@ -244,19 +252,7 @@ export class GiftService {
         },
       });
 
-      // Mark gift as converted
-      await this.prisma.telegramGift.update({
-        where: { id: giftId },
-        data: {
-          status: 'CONVERTED',
-          convertedAt: new Date(),
-          convertedValue: prize.amount,
-        },
-      });
-
-      this.logger.log(
-        `✅ Converted gift ${giftId} to prize ${prize.id}: ${prize.name}`,
-      );
+      this.logger.log(`✅ Created prize ${prize.id} from gift ${giftId}`);
 
       return prize;
     } catch (error) {
@@ -284,8 +280,8 @@ export class GiftService {
         throw new HttpException('Gift not found', 404);
       }
 
-      if (gift.convertedAt) {
-        throw new HttpException('Gift already converted', 400);
+      if (gift.status !== 'PENDING') {
+        throw new HttpException('Gift is not in PENDING status', 400);
       }
 
       if (gift.userId !== userId) {
@@ -309,13 +305,11 @@ export class GiftService {
         },
       });
 
-      // Mark gift as converted and link to inventory item
+      // Mark gift as in inventory and link to inventory item
       await this.prisma.telegramGift.update({
         where: { id: giftId },
         data: {
-          status: 'CONVERTED',
-          convertedAt: new Date(),
-          convertedValue: prize.amount,
+          status: 'IN_INVENTORY',
           inventoryItemId: inventoryItem.id,
         },
       });
@@ -371,6 +365,260 @@ export class GiftService {
     } catch (error) {
       this.logger.error('Failed to get available gifts:', error);
       throw new HttpException('Failed to get available gifts', 500);
+    }
+  }
+
+  /**
+   * Request payout for a gift - marks it for admin approval
+   */
+  async requestGiftPayout(
+    giftId: number,
+    targetTelegramId: string,
+  ): Promise<any> {
+    try {
+      const gift = await this.prisma.telegramGift.findUnique({
+        where: { id: giftId },
+        include: { inventoryItem: true },
+      });
+
+      if (!gift) {
+        throw new HttpException('Gift not found', 404);
+      }
+
+      if (!gift.starGiftId && !gift.starGiftSlug) {
+        throw new HttpException(
+          'Gift does not have a valid Telegram gift identifier for payout',
+          400,
+        );
+      }
+
+      // Check if gift is in a valid state for payout request
+      if (gift.status !== 'IN_INVENTORY') {
+        throw new HttpException(
+          `Gift cannot be paid out (current status: ${gift.status})`,
+          400,
+        );
+      }
+
+      const updatedGift = await this.prisma.telegramGift.update({
+        where: { id: giftId },
+        data: {
+          status: 'PAYOUT_REQUESTED',
+          payoutToTelegramId: targetTelegramId,
+        },
+      });
+
+      this.logger.log(
+        `📝 Gift ${giftId} marked for payout to ${targetTelegramId}`,
+      );
+
+      return updatedGift;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error('Failed to request gift payout:', error);
+      throw new HttpException('Failed to request gift payout', 500);
+    }
+  }
+
+  /**
+   * Get all gifts pending payout approval (admin only)
+   */
+  async getPendingPayoutGifts(limit = 50, offset = 0) {
+    try {
+      const gifts = await this.prisma.telegramGift.findMany({
+        where: {
+          status: 'PAYOUT_REQUESTED',
+        },
+        orderBy: { updatedAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          user: {
+            select: { id: true, username: true, telegramId: true },
+          },
+          inventoryItem: {
+            include: {
+              prize: true,
+            },
+          },
+        },
+      });
+
+      const totalCount = await this.prisma.telegramGift.count({
+        where: { status: 'PAYOUT_REQUESTED' },
+      });
+
+      return {
+        gifts,
+        totalCount,
+        hasMore: totalCount > offset + limit,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get pending payout gifts:', error);
+      throw new HttpException('Failed to get pending payout gifts', 500);
+    }
+  }
+
+  /**
+   * Approve gift payout - this will be called by admin and triggers the actual sending
+   */
+  async approveGiftPayout(giftId: number): Promise<any> {
+    try {
+      const gift = await this.prisma.telegramGift.findUnique({
+        where: { id: giftId },
+        include: {
+          inventoryItem: true,
+          user: true,
+        },
+      });
+
+      if (!gift) {
+        throw new HttpException('Gift not found', 404);
+      }
+
+      if (gift.status !== 'PAYOUT_REQUESTED') {
+        throw new HttpException(
+          `Gift is not pending approval (current status: ${gift.status})`,
+          400,
+        );
+      }
+
+      if (!gift.payoutToTelegramId) {
+        throw new HttpException('No target telegram ID set for payout', 400);
+      }
+
+      // Mark as approved
+      const updatedGift = await this.prisma.telegramGift.update({
+        where: { id: giftId },
+        data: {
+          status: 'PAYOUT_APPROVED',
+          payoutApprovedAt: new Date(),
+        },
+      });
+
+      this.logger.log(
+        `✅ Gift ${giftId} approved for payout to ${gift.payoutToTelegramId}`,
+      );
+
+      return {
+        gift: updatedGift,
+        targetTelegramId: gift.payoutToTelegramId,
+        starGiftId: gift.starGiftId,
+        starGiftSlug: gift.starGiftSlug,
+        savedMsgId: gift.savedMsgId,
+      };
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error('Failed to approve gift payout:', error);
+      throw new HttpException('Failed to approve gift payout', 500);
+    }
+  }
+
+  /**
+   * Mark gift payout as completed - called after successful Telegram send
+   */
+  async completeGiftPayout(giftId: number): Promise<any> {
+    try {
+      const gift = await this.prisma.telegramGift.findUnique({
+        where: { id: giftId },
+        include: { inventoryItem: true },
+      });
+
+      if (!gift) {
+        throw new HttpException('Gift not found', 404);
+      }
+
+      // Remove from inventory if exists
+      if (gift.inventoryItemId) {
+        await this.prisma.inventoryItem.delete({
+          where: { id: gift.inventoryItemId },
+        });
+      }
+
+      // Update gift status
+      const updatedGift = await this.prisma.telegramGift.update({
+        where: { id: giftId },
+        data: {
+          status: 'PAID_OUT',
+          payoutCompletedAt: new Date(),
+          inventoryItemId: null,
+        },
+      });
+
+      this.logger.log(
+        `🎁 Gift ${giftId} payout completed and removed from inventory`,
+      );
+
+      return updatedGift;
+    } catch (error) {
+      if (error instanceof HttpException) throw error;
+      this.logger.error('Failed to complete gift payout:', error);
+      throw new HttpException('Failed to complete gift payout', 500);
+    }
+  }
+
+  /**
+   * Mark gift payout as failed
+   */
+  async failGiftPayout(giftId: number, error: string): Promise<any> {
+    try {
+      const updatedGift = await this.prisma.telegramGift.update({
+        where: { id: giftId },
+        data: {
+          status: 'FAILED',
+          payoutError: error,
+        },
+      });
+
+      this.logger.error(`❌ Gift ${giftId} payout failed: ${error}`);
+
+      return updatedGift;
+    } catch (err) {
+      this.logger.error('Failed to mark gift payout as failed:', err);
+      throw new HttpException('Failed to update gift payout status', 500);
+    }
+  }
+
+  /**
+   * Get gifts with their identifiers for payout
+   */
+  async getGiftsForPayout(limit = 50, offset = 0) {
+    try {
+      const gifts = await this.prisma.telegramGift.findMany({
+        where: {
+          status: 'IN_INVENTORY',
+          starGiftId: { not: null }, // Must have catalog ID for buying
+        },
+        orderBy: { receivedAt: 'desc' },
+        take: limit,
+        skip: offset,
+        include: {
+          user: {
+            select: { id: true, username: true, telegramId: true },
+          },
+          inventoryItem: {
+            include: {
+              prize: true,
+            },
+          },
+        },
+      });
+
+      const totalCount = await this.prisma.telegramGift.count({
+        where: {
+          status: 'IN_INVENTORY',
+          starGiftId: { not: null },
+        },
+      });
+
+      return {
+        gifts,
+        totalCount,
+        hasMore: totalCount > offset + limit,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get gifts for payout:', error);
+      throw new HttpException('Failed to get gifts for payout', 500);
     }
   }
 }

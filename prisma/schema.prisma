@@ -49,9 +49,13 @@ enum Currency {
 }
 
 enum TelegramGiftStatus {
-  PENDING
-  CONVERTED
-  USED
+  PENDING       // Gift received, not yet added to user inventory
+  IN_INVENTORY  // Gift is in user's casino inventory (InventoryItem created)
+  PAYOUT_REQUESTED  // User requested to receive the actual gift in Telegram
+  PAYOUT_APPROVED   // Admin approved, transfer in progress
+  PAID_OUT      // Gift successfully transferred to user via Telegram
+  SOLD          // User sold the gift for balance (destroyed)
+  FAILED        // Payout/transfer failed
 }
 
 enum TelegramGiftType {
@@ -149,11 +153,22 @@ model TelegramGift {
   senderName          String?
   isAnonymous         Boolean               @default(false)
   status              TelegramGiftStatus    @default(PENDING)
-  convertedValue      Int?
-  convertedAt         DateTime?
-  inventoryItemId     Int?                  @unique
   receivedAt          DateTime
   rawMessage          Json
+  
+  // Telegram Gift identifiers for transferring gifts
+  starGiftId          String?               // The gift type ID from starGift.id (catalog ID)
+  starGiftSlug        String?               // For unique/collectible gifts - the slug identifier
+  savedMsgId          Int?                  // The message ID where gift is saved (for inputSavedStarGiftUser)
+  
+  // Inventory link (when gift is added to casino inventory)
+  inventoryItemId     Int?                  @unique
+  
+  // Payout tracking  
+  payoutToTelegramId  String?               // Target user's telegram ID for payout
+  payoutApprovedAt    DateTime?
+  payoutCompletedAt   DateTime?
+  payoutError         String?
   
   createdAt           DateTime              @default(now())
   updatedAt           DateTime              @updatedAt

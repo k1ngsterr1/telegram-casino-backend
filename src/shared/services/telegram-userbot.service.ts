@@ -8,26 +8,14 @@ import { ConfigService } from '@nestjs/config';
 import { PrismaService } from './prisma.service';
 import { GiftService } from './gift.service';
 import { Cron } from '@nestjs/schedule';
-
-// Import Telegram API (install: yarn add telegram)
-// Note: These will be optional dependencies
-let TelegramClient: any;
-let StringSession: any;
-let Api: any;
-
-try {
-  const telegram = require('telegram');
-  TelegramClient = telegram.TelegramClient;
-  StringSession = telegram.sessions.StringSession;
-  Api = telegram.Api;
-} catch (error) {
-  // Telegram dependencies not installed - service will be disabled
-}
+import { Api, TelegramClient } from 'telegram';
+import { StringSession } from 'telegram/sessions';
+import bigInt from 'big-integer';
 
 @Injectable()
 export class TelegramUserbotService implements OnModuleDestroy {
   private readonly logger = new Logger(TelegramUserbotService.name);
-  private client: any = null;
+  private client: TelegramClient = null;
   private isInitialized = false;
   private isInitializing = false;
   private recentPollIntervalId: NodeJS.Timeout | null = null;
@@ -312,6 +300,17 @@ export class TelegramUserbotService implements OnModuleDestroy {
         'ℹ️ Gift monitoring will be disabled. Check your Telegram credentials.',
       );
     }
+  }
+
+  async getAllStarGifts() {
+    const result = await this.client.invoke(
+      new Api.payments.GetStarGifts({ hash: 0 }),
+    );
+    return result;
+  }
+
+  async sendGift() {
+    // await this.client.invoke(new Api.payments.GetStarGifts)
   }
 
   private startPollingForGifts() {
@@ -675,6 +674,406 @@ export class TelegramUserbotService implements OnModuleDestroy {
     } catch (error) {
       this.logger.error(`Failed to send gift to user ${userId}:`, error);
       throw new HttpException(`Failed to send gift: ${error.message}`, 500);
+    }
+  }
+
+  /**
+   * Get all available star gifts from Telegram
+   * Returns the list of gifts that can be purchased and sent
+   */
+  async getAvailableStarGifts(): Promise<any> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log('Fetching available star gifts from Telegram...');
+
+      const result = await this.client.invoke(
+        new Api.payments.GetStarGifts({ hash: 0 }),
+      );
+
+      if (result.className === 'payments.StarGiftsNotModified') {
+        return { gifts: [], message: 'No changes since last fetch' };
+      }
+
+      const starGifts = result as any;
+      this.logger.log(`Found ${starGifts.gifts?.length || 0} available gifts`);
+
+      return {
+        success: true,
+        gifts:
+          starGifts.gifts?.map((gift: any) => ({
+            id: gift.id?.toString(),
+            stars: gift.stars,
+            limited: gift.limited || false,
+            soldOut: gift.soldOut || false,
+            birthday: gift.birthday || false,
+            convertStars: gift.convertStars,
+            upgradeStars: gift.upgradeStars,
+            availabilityRemains: gift.availabilityRemains,
+            availabilityTotal: gift.availabilityTotal,
+            stickerId: gift.sticker?.id?.toString(),
+          })) || [],
+      };
+    } catch (error) {
+      this.logger.error('Failed to get star gifts:', error);
+      throw new HttpException(
+        `Failed to get star gifts: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  /**
+   * Buy and send a star gift to a user using the Telegram payments API
+   *
+   * This PURCHASES a new gift from Telegram's catalog and sends it to the user.
+   * The bot must have enough Telegram Stars balance to cover the cost.
+   *
+   * Flow:
+   * 1. Validate the gift can be sent (not sold out, not locked, etc.)
+   * 2. Use payments.getPaymentForm with inputInvoiceStarGift
+   * 3. Use payments.sendPaymentForm to complete purchase and send
+   *
+   * @param targetTelegramId - The telegram user ID to send the gift to
+   * @param starGiftId - The catalog gift_id from starGift.id (the type of gift to buy)
+   * @param options - Additional options for the gift
+   */
+  async buyAndSendGiftToUser(
+    targetTelegramId: string,
+    starGiftId: string,
+    options: {
+      message?: string;
+      hideName?: boolean;
+      includeUpgrade?: boolean;
+    } = {},
+  ): Promise<any> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log(
+        `🎁 Preparing to BUY and send gift (catalogId: ${starGiftId}) to user ${targetTelegramId}`,
+      );
+
+      // First, validate the gift can be sent
+      const validation = await this.validateGiftCanBeSent(starGiftId);
+      if (!validation.canSend) {
+        throw new HttpException(`Cannot send gift: ${validation.reason}`, 400);
+      }
+
+      this.logger.log(
+        `✅ Gift validation passed. Cost: ${validation.stars} stars`,
+      );
+
+      // Get user peer
+      const userPeer = await this.client.getInputEntity(
+        parseInt(targetTelegramId),
+      );
+
+      // Create the invoice for purchasing the star gift
+      // Using inputInvoiceStarGift as per Telegram API
+      const invoice = new Api.InputInvoiceStarGift({
+        peer: userPeer,
+        giftId: bigInt(starGiftId),
+        hideName: options.hideName || false,
+        includeUpgrade: options.includeUpgrade || false,
+        message: options.message
+          ? new Api.TextWithEntities({
+              text: options.message,
+              entities: [],
+            })
+          : undefined,
+      });
+
+      this.logger.log('📋 Getting payment form...');
+
+      // Get payment form - this shows us what we'll pay
+      const paymentForm = await this.client.invoke(
+        new Api.payments.GetPaymentForm({
+          invoice: invoice,
+        }),
+      );
+
+      this.logger.log(
+        `💳 Payment form received, form ID: ${paymentForm.formId}`,
+      );
+
+      // Send payment - this will deduct stars from bot's account and send the gift
+      const paymentResult = await this.client.invoke(
+        new Api.payments.SendPaymentForm({
+          formId: paymentForm.formId,
+          invoice: invoice,
+          credentials: new Api.InputPaymentCredentials({
+            // For star gifts, we use empty credentials as payment is via Telegram Stars
+            data: new Api.DataJSON({ data: '{}' }),
+          }),
+        }),
+      );
+
+      this.logger.log(
+        `✅ Gift purchased and sent successfully to ${targetTelegramId}!`,
+      );
+
+      return {
+        success: true,
+        message: `Gift (catalogId: ${starGiftId}) purchased for ${validation.stars} stars and sent to user ${targetTelegramId}`,
+        starsCost: validation.stars,
+        result: paymentResult,
+      };
+    } catch (error) {
+      this.logger.error(
+        `Failed to buy/send gift to user ${targetTelegramId}:`,
+        error,
+      );
+      throw new HttpException(
+        `Failed to send gift: ${error.message}`,
+        error.code === 400 ? 400 : 500,
+      );
+    }
+  }
+
+  /**
+   * Validate if a gift can be purchased and sent
+   * Checks: sold out, locked until date, premium required, per-user limits
+   */
+  async validateGiftCanBeSent(starGiftId: string): Promise<{
+    canSend: boolean;
+    reason?: string;
+    stars?: number;
+    giftInfo?: any;
+  }> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log(`🔍 Validating gift ${starGiftId}...`);
+
+      // Get all available gifts to find this one
+      const giftsResult = await this.client.invoke(
+        new Api.payments.GetStarGifts({ hash: 0 }),
+      );
+
+      if (giftsResult.className === 'payments.StarGiftsNotModified') {
+        return { canSend: false, reason: 'Could not fetch gift catalog' };
+      }
+
+      const gifts = (giftsResult as any).gifts || [];
+      const gift = gifts.find((g: any) => g.id?.toString() === starGiftId);
+
+      if (!gift) {
+        return {
+          canSend: false,
+          reason: `Gift with ID ${starGiftId} not found in catalog`,
+        };
+      }
+
+      // Check if sold out
+      if (gift.soldOut) {
+        return {
+          canSend: false,
+          reason: 'Gift is sold out',
+          giftInfo: gift,
+        };
+      }
+
+      // Check if locked until a future date
+      if (gift.lockedUntilDate) {
+        const lockedUntil = new Date(gift.lockedUntilDate * 1000);
+        if (lockedUntil > new Date()) {
+          return {
+            canSend: false,
+            reason: `Gift is locked until ${lockedUntil.toISOString()}`,
+            giftInfo: gift,
+          };
+        }
+      }
+
+      // Check per-user limits
+      if (
+        gift.limitedPerUser &&
+        gift.perUserRemains !== undefined &&
+        gift.perUserRemains <= 0
+      ) {
+        return {
+          canSend: false,
+          reason: 'Per-user purchase limit reached for this gift type',
+          giftInfo: gift,
+        };
+      }
+
+      // Check if requires premium (bot needs to have premium if this is set)
+      if (gift.requirePremium) {
+        this.logger.warn(
+          'Gift requires Telegram Premium - ensure bot account has Premium',
+        );
+      }
+
+      return {
+        canSend: true,
+        stars: gift.stars,
+        giftInfo: {
+          id: gift.id?.toString(),
+          stars: gift.stars,
+          limited: gift.limited || false,
+          availabilityRemains: gift.availabilityRemains,
+          availabilityTotal: gift.availabilityTotal,
+          convertStars: gift.convertStars,
+        },
+      };
+    } catch (error) {
+      this.logger.error(`Failed to validate gift ${starGiftId}:`, error);
+      return {
+        canSend: false,
+        reason: `Validation error: ${error.message}`,
+      };
+    }
+  }
+
+  /**
+   * @deprecated Use buyAndSendGiftToUser instead
+   */
+  async sendStarGiftToUser(
+    targetTelegramId: string,
+    starGiftId: string,
+    options: {
+      message?: string;
+      hideName?: boolean;
+      includeUpgrade?: boolean;
+    } = {},
+  ): Promise<any> {
+    return this.buyAndSendGiftToUser(targetTelegramId, starGiftId, options);
+  }
+
+  /**
+   * Get saved gifts for the current user (bot account)
+   * Useful for viewing what gifts the bot has received
+   */
+  async getSavedGifts(limit = 50, offset = ''): Promise<any> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log('Fetching saved gifts...');
+
+      const me = await this.client.getMe();
+      const myPeer = await this.client.getInputEntity((me as any).id);
+
+      const result = await this.client.invoke(
+        new Api.payments.GetSavedStarGifts({
+          peer: myPeer,
+          limit: limit,
+          offset: offset,
+        }),
+      );
+
+      const savedGifts = result as any;
+      this.logger.log(`Found ${savedGifts.gifts?.length || 0} saved gifts`);
+
+      return {
+        success: true,
+        gifts: savedGifts.gifts || [],
+        nextOffset: savedGifts.nextOffset,
+        count: savedGifts.count,
+      };
+    } catch (error) {
+      this.logger.error('Failed to get saved gifts:', error);
+      throw new HttpException(
+        `Failed to get saved gifts: ${error.message}`,
+        500,
+      );
+    }
+  }
+
+  /**
+   * Check if we can send a specific gift
+   * Some gifts may have restrictions (locked_until_date, require_premium, etc.)
+   */
+  async checkCanSendGift(starGiftId: string): Promise<any> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log(`Checking if gift ${starGiftId} can be sent...`);
+
+      // Check if CheckCanSendGift is available in the API
+      if (!(Api.payments as any).CheckCanSendGift) {
+        this.logger.warn(
+          'CheckCanSendGift not available in current telegram library',
+        );
+        // Return optimistic result if method not available
+        return {
+          canSend: true,
+          message: 'Gift check not available, assuming sendable',
+          warning:
+            'CheckCanSendGift API not available in current library version',
+        };
+      }
+
+      const result = await this.client.invoke(
+        new (Api.payments as any).CheckCanSendGift({
+          giftId: bigInt(starGiftId),
+        }),
+      );
+
+      const canSend = result.className === 'payments.CheckCanSendGiftResultOk';
+
+      if (!canSend) {
+        const failResult = result as any;
+        return {
+          canSend: false,
+          reason: failResult.reason?.text || 'Unknown reason',
+        };
+      }
+
+      return {
+        canSend: true,
+        message: 'Gift can be sent',
+      };
+    } catch (error) {
+      this.logger.error(`Failed to check gift ${starGiftId}:`, error);
+      throw new HttpException(`Failed to check gift: ${error.message}`, 500);
+    }
+  }
+
+  /**
+   * Convert a received star gift to Telegram Stars
+   * This permanently destroys the gift and adds stars to balance
+   * Note: Can only convert gifts received less than stargifts_convert_period_max seconds ago
+   */
+  async convertGiftToStars(savedMsgId: number): Promise<any> {
+    if (!this.isInitialized) {
+      throw new HttpException('Telegram UserBot not initialized', 500);
+    }
+
+    try {
+      this.logger.log(`Converting gift (msgId: ${savedMsgId}) to stars...`);
+
+      const starGiftInput = new Api.InputSavedStarGiftUser({
+        msgId: savedMsgId,
+      });
+
+      const result = await this.client.invoke(
+        new Api.payments.ConvertStarGift({
+          stargift: starGiftInput,
+        }),
+      );
+
+      this.logger.log('✅ Gift converted to stars successfully');
+
+      return {
+        success: true,
+        message: 'Gift converted to Telegram Stars',
+        result,
+      };
+    } catch (error) {
+      this.logger.error('Failed to convert gift to stars:', error);
+      throw new HttpException(`Failed to convert gift: ${error.message}`, 500);
     }
   }
 }
